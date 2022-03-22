@@ -40,40 +40,31 @@ myANN::setup(Config config) {
     weights.clear();
 
     n_layers = m_config.HiddenLayers.size() + 2;
+    auto input_size = layout.emplace_back(m_config.InputSize);
 
-    layout.emplace_back(m_config.InputSize);
+    for (Index i = 0; i < n_layers - 1; ++i) {
+        auto output_size = i < n_layers - 2 ? m_config.HiddenLayers[i]
+                                            : m_config.OutputSize;
 
-    /// Process all layers before the last
-    for (Index i = 0; i < n_layers - 2; ++i) {
-
-        auto input_size = layout.back();
-        auto output_size = layout.emplace_back(m_config.HiddenLayers[i]);
-
-        layout.emplace_back(output_size);
         layers.emplace_back(input_size + 1) << Eigen::VectorXd::Random(input_size), 1.0;
-        cache.emplace_back(input_size + 1) << Eigen::VectorXd::Constant(input_size, 0.0), 1.0;
-        deltas.emplace_back(output_size) << Eigen::VectorXd::Constant(output_size, 0.0);
-        weights.emplace_back(output_size + 1, input_size + 1) <<
-            Eigen::MatrixXd::Random(output_size, input_size + 1),
-            Eigen::MatrixXd::Constant(1, input_size, 0.0), 1.0;
+        cache.emplace_back(input_size + 1) << layers.back();
+        deltas.emplace_back(input_size + 1) << Eigen::VectorXd::Zero(input_size + 1);
+        if (i < n_layers - 2)
+            weights.emplace_back(output_size + 1, input_size + 1) <<
+                Eigen::MatrixXd::Random(output_size, input_size + 1),
+                Eigen::MatrixXd::Zero(1, input_size), 1.0;
+        else
+            weights.emplace_back(output_size, input_size + 1) <<
+                Eigen::MatrixXd::Random(output_size, input_size + 1);
+
+        input_size = layout.emplace_back(output_size);
     }
 
-    /// Last layer
-    {
-        auto input_size = layout.back();
-        auto output_size = m_config.OutputSize;
-
-        layout.emplace_back(output_size);
-        layers.emplace_back(input_size + 1) << Eigen::VectorXd::Random(input_size), 1.0;
-        cache.emplace_back(input_size + 1) << Eigen::VectorXd::Constant(input_size, 0.0), 1.0;
-        deltas.emplace_back(output_size) << Eigen::VectorXd::Constant(output_size, 0.0);
-        weights.emplace_back(output_size, input_size + 1) <<
-            Eigen::MatrixXd::Random(output_size, input_size + 1);
-    }
+    layers.emplace_back(layout.back()) << Eigen::VectorXd::Zero(layout.back());
 }
 
 void myANN::Forward(const Eigen::VectorXd& input) {
-    // assign input to the first layer
+    // assign inputs to the first layer
     layers[0].head(input.size()) = input;
 
     for (Index i = 0; i < n_layers - 1; ++i) {
@@ -83,13 +74,12 @@ void myANN::Forward(const Eigen::VectorXd& input) {
 }
 
 void myANN::CalculateErrors(const Eigen::VectorXd& target) {
-    cache.back() = layers[n_layers - 1];
-    layers[n_layers - 1] = target;
-    deltas[n_layers - 1] = cache.back() - layers[n_layers - 1];
+
 }
 
 void myANN::Backward(const Eigen::VectorXd& target) {
-
+    // assign outputs to the last layer
+    layers.back() = target;
 }
 
 void myANN::print(std::ostream& out) {
@@ -99,7 +89,7 @@ void myANN::print(std::ostream& out) {
                   << "    input: " << layout[i] << "  ====>>   " << layout[i+1] << " :output"
                   << "\n\nWEIGHTS:\n"
                   << weights[i].format(CleanFmt)
-                  << "\n\nNeuron values:\n" << layers[i].format(CleanFmt)
+                  << "\n\nInput values:\n" << layers[i].format(CleanFmt)
                   << "\n\ndeltas:\n" << deltas[i].format(CleanFmt)
                   << "\n\n****************************************\n" << std::endl;
     }
