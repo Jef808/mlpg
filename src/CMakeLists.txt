@@ -1,9 +1,9 @@
-#include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/out)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-add_subdirectory(environments/tictactoe)
-add_subdirectory(tests)
-add_subdirectory(viewer)
-add_subdirectory(replay)
-add_subdirectory(ann)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/environments/tictactoe)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tests)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/viewer)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/replay)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/ann)

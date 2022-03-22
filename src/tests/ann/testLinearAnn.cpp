@@ -7,17 +7,22 @@ using namespace simple;
 
 int main(int argc, char *argv[]) {
 
+  std::cout << "\n\nHello..." << std::endl;
+  Config config;
+  myANN NN;
 
-  Eigen::VectorXf vec = Eigen::VectorXf::Zero(100);
+  config.InputSize = 4;
+  config.OutputSize = 1;
+  config.HiddenLayers  = { 2, 2 };
 
-  std::cout << "Hello..." << std::endl;
+  NN.setup(config);
+  NN.print(std::cout);
 
-  myANN network{};
-  Config conf;
+  // Eigen::VectorXd inputs;
 
-  network.setup(std::move(conf));
+  // NN.Forward(inputs);
 
-  std::cout << "Byebye...  " << std::endl;
+  std::cout << "\n\nByebye...  " << std::endl;
 
   return 0;
 }

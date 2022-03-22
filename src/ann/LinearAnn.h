@@ -1,54 +1,102 @@
 #ifndef LINEARANN_H_
 #define LINEARANN_H_
 
-#include <Eigen/Core>
+
+#include <iosfwd>
+#include <vector>
+
+#include "Eigen/Dense"
 
 namespace simple {
 
 
-
-struct Config {
-    std::size_t InputSize{ 4 };
-    std::size_t OutputSize{ 1 };
-    std::size_t NLayers{ };
-};
-
+  struct Config { using Index = Eigen::Index;
+     Index InputSize; Index OutputSize; std::vector<Index> HiddenLayers;
+  };
 
 
 class myANN {
-public:
-    using Vec = Eigen::VectorXf;
-    using Mat = Eigen::MatrixXf;
 
-    myANN() = default;
+public: using Index = Config::Index; myANN() = default;
 
-    void setup(Config&& config);
+    /**
+     * Constructs the data-structure of the model before
+     * it can be used for training.
+     */
+    void setup(Config);
 
-    void Forward(const Vec& input);
+    /**
+     *
+     */
+    void Train();
 
-    void SampleCost(const Vec& target, float& Cost);
+    /**
+     * Runs a forward pass, where each node's
+     * value is computed according to the
+     * given `input` and the current `policy`
+     * of the network.
+     */
+    void Forward(const Eigen::VectorXd& input);
 
-    void Backward(const Vec& target);
+    /**
+     * Runs a backpropagation pass, upgrading the weights
+     * from knowledge of the last forward pass.
+     */
+    void Backward(const Eigen::VectorXd& target);
 
+    /**
+     *
+     */
+    void CalculateErrors(const Eigen::VectorXd& target);
+
+    /**
+     *
+     */
     void update();
 
-    template<typename Derived>
-    void train(Eigen::DenseBase<Derived> data);
+    /**
+     *
+     */
+    std::vector<Index> get_layout();
+
+    /**
+     *
+     */
+    void print(std::ostream& /* output stream */);
+
+    /**
+     *
+     */
+    void print_config(std::ostream& /* output stream */);
 
 private:
+    // Local record of the number of layers in the network
+    Index n_layers;
 
-    size_t layout;
-    Eigen::MatrixXf weights;
-    int InputSize = 4;
-    int OutputSize = 1;
-    int n_layers = 4;
-    float learning_rate;
-    Config config;
-};
+    // The current shape of the state, as set by the configuration
+    std::vector<Index> layout;
+
+    // Controls the step size when updating the network's state.
+    double learning_rate;
+
+    // The current state of the network
+    std::vector<Eigen::MatrixXd> weights;
+
+    // The current value of the state's neurons' values
+    std::vector<Eigen::VectorXd> layers;
+
+    // The previous value of the state's neurons' values
+    std::vector<Eigen::VectorXd> cache;
+
+    // The current estimate for each neuron's responsibility in the error
+    std::vector<Eigen::VectorXd> deltas;
+
+    Config m_config;
+
+  };  // myANN
 
 
 
+}  // namespace simple
 
-}
-
-#endif // LINEARANN_H_
+#endif  // LINEARANN_H_

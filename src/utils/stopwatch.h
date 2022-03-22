@@ -25,7 +25,7 @@ public:
     {
         return ticks_count(m_start, Clock::now());
     }
-    Duration get() const
+    [[nodiscard]] Duration get() const
     {
         return std::chrono::duration_cast<Duration>(Clock::now() - m_start);
     }
