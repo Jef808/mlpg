@@ -11,7 +11,7 @@ namespace simple {
 
 
   struct Config { using Index = Eigen::Index;
-     Index InputSize; Index OutputSize; std::vector<Index> HiddenLayers;
+     Index InputSize; Index OutputSize; std::vector<Index> HiddenLayers; double LearningRate; double MomentumGain;
   };
 
 
@@ -41,6 +41,8 @@ public: using Index = Config::Index; myANN() = default;
     /**
      * Runs a backpropagation pass, upgrading the weights
      * from knowledge of the last forward pass.
+     *
+     * @target is the expected output coming from the data,
      */
     void Backward(const Eigen::VectorXd& target);
 
@@ -52,7 +54,7 @@ public: using Index = Config::Index; myANN() = default;
     /**
      *
      */
-    void update();
+    void UpdateWeights();
 
     /**
      *
@@ -79,6 +81,9 @@ private:
     // Controls the step size when updating the network's state.
     double learning_rate;
 
+    // Controls the effective (adaptative) learning rate
+    double momentum_gain;
+
     // The current state of the network
     std::vector<Eigen::MatrixXd> weights;
 
@@ -90,6 +95,8 @@ private:
 
     // The current estimate for each neuron's responsibility in the error
     std::vector<Eigen::VectorXd> deltas;
+
+    std::vector<Eigen::MatrixXd> gradient;
 
     Config m_config;
 
