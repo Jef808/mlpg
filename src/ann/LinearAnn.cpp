@@ -37,7 +37,9 @@
 #include "ViewCmd.h"
 #include "utils/stopwatch.h"
 
+#include <cassert>
 #include <iostream>
+#include <numeric>
 #include <vector>
 
 #include <type_traits>
@@ -63,52 +65,26 @@ myANN::setup(Config config) {
     auto input_size = layout.emplace_back(m_config.InputSize);
     layers.emplace_back(input_size + 1) << Eigen::VectorXd::Zero(input_size), 1.0;
 
-    // // z^l = W^l * a^(l-1) so we don't have any W^0 = weights[0] or z^0 = cache[0]
-    // weights.emplace_back(0, 0) << 0.0;
-    // cache.emplace_back(0, 0) << 0.0;
-    // // Since layers[0] = x_in = a^0 is part of the data, we don't have a deltas[0] either
-    // deltas.emplace_back(0, 0) << 0.0;
-
     for (Index i = 0; i < n_layers - 1; ++i) {
         auto output_size = i < n_layers - 2 ? m_config.HiddenLayers[i]
                                             : m_config.OutputSize;
 
-        // layers.emplace_back(input_size + 1) << Eigen::VectorXd::Zero(input_size), 1.0;
-        // cache.emplace_back(input_size + 1) << layers.back ();
-        // deltas.emplace_back(input_size + 1) << Eigen::VectorXd::Zero(input_size + 1);
-        // if (i < n_layers - 2)
-        //     weights.emplace_back(output_size + 1, input_size + 1) <<
-        //         Eigen::MatrixXd::Random(output_size, input_size + 1),
-        //         Eigen::MatrixXd::Zero(1, input_size), 1.0;
-        // else
-        //     weights.emplace_back(output_size, input_size + 1) <<
-        //         Eigen::MatrixXd::Random(output_size, input_size + 1);
-
-        // input_size = layout.emplace_back(output_size);
-
-        if (i < n_layers - 2) { // all pairs of layers except the last
-            layers.emplace_back(output_size + 1) << Eigen::VectorXd::Zero(output_size), 1.0;
-            cache.emplace_back(output_size) << Eigen::VectorXd::Zero(output_size);
-            deltas.emplace_back(output_size) << Eigen::VectorXd::Zero(output_size);
-            weights.emplace_back(output_size, input_size + 1) <<
-                Eigen::MatrixXd::Random(output_size, input_size + 1);//,
-                //Eigen::MatrixXd::Zero(1, input_size + 1);
-            gradient.emplace_back(output_size, input_size + 1) <<
-                Eigen::MatrixXd::Zero(output_size, input_size + 1);
-        } else { // output layer has no bias
+        if (i == n_layers - 2) // all pairs of layers except the last
             layers.emplace_back(output_size) << Eigen::VectorXd::Zero(output_size);
-            cache.emplace_back(output_size) << Eigen::VectorXd::Zero(output_size);
-            deltas.emplace_back(output_size) << Eigen::VectorXd::Zero(output_size);
-            weights.emplace_back(output_size, input_size + 1) <<
-                Eigen::MatrixXd::Random(output_size, input_size + 1);
-            gradient.emplace_back(output_size, input_size + 1) <<
-                Eigen::MatrixXd::Zero(output_size, input_size + 1);
-        }
+        else
+            layers.emplace_back(output_size + 1) << Eigen::VectorXd::Zero(output_size), 1.0;
+
+        cache.emplace_back(output_size) << Eigen::VectorXd::Zero(output_size);
+        deltas.emplace_back(output_size) << Eigen::VectorXd::Zero(output_size);
+        weights.emplace_back(output_size, input_size + 1) <<
+            Eigen::MatrixXd::Random(output_size, input_size + 1);//,
+        gradients.emplace_back(output_size, input_size + 1) <<
+            Eigen::MatrixXd::Zero(output_size, input_size + 1);
+
         input_size = layout.emplace_back(output_size);
     }
-
-    //layers.emplace_back(layout.back()) << Eigen::VectorXd::Zero(layout.back());
 }
+
 
 double Sigmoid(const double i) {
     return 1.0 / (1.0 + std::exp(-i));
@@ -142,7 +118,7 @@ void myANN::Forward(const Eigen::VectorXd& input) {
     }
 }
 
-void myANN::CalculateErrors(const Eigen::VectorXd& target) {
+void myANN::BackpropagateError(const Eigen::VectorXd& target) {
     // last error is given by difference between result of Forward and target,
     // proportional to the derivative of the output activation function.
     DerActivationFunction(cache.back(), cache.back());
@@ -152,23 +128,53 @@ void myANN::CalculateErrors(const Eigen::VectorXd& target) {
 
     for (Index i = n_layers - 3; i >= 0; --i) {
         DerActivationFunction(cache[i], cache[i]);
-        //deltas[i] = (weights[i + 1].transpose() * deltas[i + 1]).cwiseProduct(cache[i]);
-        // (W^l)^T delta^(l+1) (only keep <partial C / partial z_j> since <partial C / partial b_j = partial_C / partial_z_j)
         deltas[i] = (weights[i + 1].transpose() * deltas[i + 1]).head(layout[i + 1]).cwiseProduct(cache[i]);
     }
+
+    std::cout << "Computed errors" << std::endl;
 }
 
-void myANN::UpdateWeights() {
-    for (Index i = 0; i < n_layers - 1; ++i) {
-        Eigen::MatrixXd gradient(weights[i].rows(), weights[i].cols());
-        gradient << deltas[i] * (layers[i].transpose());
-        weights[i] -= learning_rate * gradient;
+void myANN::Backward(const Eigen::VectorXd& target, std::vector<Eigen::MatrixXd>& gradient) {
+    BackpropagateError(target);
+    for (Index i = 0; i < n_layers - 1; ++i)
+        gradient[i] += deltas[i] * (layers[i].transpose());
+}
+
+void myANN::UpdateWeights(Index minibatch_size) {
+    for (Index i = 0; i < n_layers - 1; ++i)
+        weights[i] -= (learning_rate / static_cast<double>(minibatch_size)) * gradients[i];
+}
+
+void myANN::Train(const Eigen::MatrixXd &train_x, const Eigen::MatrixXd &train_y) {
+    Index minibatch_size = train_x.cols();
+
+    for (Index t = 0; t < minibatch_size; ++t) {
+        Eigen::VectorXd x = train_x.col(t);
+        Eigen::VectorXd y = train_y.col(t);
+
+        Forward(x);
+        Backward(layers.back(), gradients);
+    }
+
+    UpdateWeights(minibatch_size);
+}
+
+void myANN::Predict(const Eigen::MatrixXd& test_x, Eigen::MatrixXd& test_y) {
+    for (Index t = 0; t < test_x.cols(); ++t) {
+        Forward(test_x.col(t));
+        test_y.col(t) = layers.back();
     }
 }
 
-void myANN::Backward(const Eigen::VectorXd& target) {
-    CalculateErrors(target);
-    UpdateWeights();
+double myANN::AverageLoss(const Eigen::MatrixXd& predictions, const Eigen::MatrixXd& targets) {
+    assert(predictions.cols() == targets.cols() && "Error : predictions.cols() != targets.cols() in AverageLoss");
+
+    double result = 0.0;
+    for (Index t = 0; t < predictions.cols(); ++t) {
+        result += (predictions.col(t) - targets.col(t)).squaredNorm();
+    }
+
+    return result / predictions.cols();
 }
 
 void myANN::print(std::ostream& out) {

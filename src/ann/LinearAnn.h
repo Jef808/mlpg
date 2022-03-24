@@ -28,7 +28,12 @@ public: using Index = Config::Index; myANN() = default;
     /**
      *
      */
-    void Train();
+    void Train(const Eigen::MatrixXd& train_x, const Eigen::MatrixXd& train_y);
+
+    /**
+     *
+     */
+    void Predict(const Eigen::MatrixXd& test_x, Eigen::MatrixXd& test_y);
 
     /**
      * Runs a forward pass, where each node's
@@ -39,22 +44,28 @@ public: using Index = Config::Index; myANN() = default;
     void Forward(const Eigen::VectorXd& input);
 
     /**
+     * For each layer, compute the deltas, i.e. the <partial C(a^L) / partial z^l>
+     * when C is seen as having fixed weights and output, with variable input
+     */
+    void BackpropagateError(const Eigen::VectorXd& target);
+
+    /**
      * Runs a backpropagation pass, upgrading the weights
      * from knowledge of the last forward pass.
      *
      * @target is the expected output coming from the data,
+     * @gradients contains the gradient nabla_W C of the cost function
+     * viewed as having fixed input and output, with variable weights
      */
-    void Backward(const Eigen::VectorXd& target);
+    void Backward(const Eigen::VectorXd& target, std::vector<Eigen::MatrixXd>& gradient);
 
     /**
-     *
+     * For each layer, update the weights in the direction of @gradients with step size
+     * given by @learning_rate.
      */
-    void CalculateErrors(const Eigen::VectorXd& target);
+    void UpdateWeights(Index minibatch_size = 1);
 
-    /**
-     *
-     */
-    void UpdateWeights();
+    double AverageLoss(const Eigen::MatrixXd& predictions, const Eigen::MatrixXd& targets);
 
     /**
      *
@@ -96,7 +107,8 @@ private:
     // The current estimate for each neuron's responsibility in the error
     std::vector<Eigen::VectorXd> deltas;
 
-    std::vector<Eigen::MatrixXd> gradient;
+    // The gradient of the cost function with respec to the weights.
+    std::vector<Eigen::MatrixXd> gradients;
 
     Config m_config;
 
