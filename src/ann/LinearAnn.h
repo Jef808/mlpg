@@ -5,7 +5,7 @@
 #include <iosfwd>
 #include <vector>
 
-#include "Eigen/Dense"
+#include "Eigen/Core"
 
 namespace simple {
 
@@ -31,9 +31,15 @@ public: using Index = Config::Index; myANN() = default;
     void Train(const Eigen::MatrixXd& train_x, const Eigen::MatrixXd& train_y);
 
     /**
-     *
+     * Compute the errors with the current model with respect to the given test
+     * data @test_x and @test_y.
      */
-    void Predict(const Eigen::MatrixXd& test_x, Eigen::MatrixXd& test_y);
+    bool Predict(const Eigen::MatrixXd& test_x, const Eigen::MatrixXd& test_y, double* predictions, double& error_sum);
+
+    /**
+     * Remap the underying buffer for the output layer to the given pointer.
+     */
+    bool ConnectToOutput(double* data);
 
     /**
      * Runs a forward pass, where each node's
@@ -42,6 +48,8 @@ public: using Index = Config::Index; myANN() = default;
      * of the network.
      */
     void Forward(const Eigen::VectorXd& input);
+
+    void ErrorFunction(const Eigen::VectorXd& target, const Eigen::VectorXd& pred, double& error) const;
 
     /**
      * For each layer, compute the deltas, i.e. the <partial C(a^L) / partial z^l>
@@ -57,7 +65,7 @@ public: using Index = Config::Index; myANN() = default;
      * @gradients contains the gradient nabla_W C of the cost function
      * viewed as having fixed input and output, with variable weights
      */
-    void Backward(const Eigen::VectorXd& target, std::vector<Eigen::MatrixXd>& gradient);
+    void Backward(const Eigen::VectorXd& target);
 
     /**
      * For each layer, update the weights in the direction of @gradients with step size
@@ -67,20 +75,17 @@ public: using Index = Config::Index; myANN() = default;
 
     double AverageLoss(const Eigen::MatrixXd& predictions, const Eigen::MatrixXd& targets);
 
+
+    [[nodiscard]] const Config& get_config() const;
     /**
      *
      */
-    std::vector<Index> get_layout();
+    void print(std::ostream& /* output stream */) const;
 
     /**
      *
      */
-    void print(std::ostream& /* output stream */);
-
-    /**
-     *
-     */
-    void print_config(std::ostream& /* output stream */);
+    void print_config(std::ostream& /* output stream */) const;
 
 private:
     // Local record of the number of layers in the network

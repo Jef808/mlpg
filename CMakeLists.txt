@@ -14,5 +14,4 @@ find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup(TARGETS)
 
-#include(eigen)
 add_subdirectory(src)

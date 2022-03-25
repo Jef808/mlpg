@@ -3,224 +3,353 @@
 #include <algorithm>
 #include <iostream>
 #include <random>
+#include <numeric>
 #include <cmath>
 #include <cassert>
 #include <string>
+#include <fstream>
 #include <sstream>
 #include <vector>
 #include <iomanip>
 #include <iterator>
 
-#include "Eigen/Dense"
+#include "Eigen/Core"
+#include "Eigen/StdVector"
 
 using namespace simple;
 
 Eigen::IOFormat Clean(4, 0, ", ", "\n", "[", "]");
 
+/**
+ * Wrap a function of one variable @F to be able to act component-wise on tensors
+ */
+template <typename FImpl>
+struct RealFunction {
+    RealFunction(double x_min_, double x_max_, FImpl impl_ = FImpl{})
+            : impl{impl_}, x_min{x_min_}, x_max{x_max_} {}
 
-template<typename OutputIter>
-void whitespace(OutputIter& out, size_t N) {
-  std::generate_n(std::ostream_iterator<char>(out), N, []{ return ' '; });
-}
+  // This is impl itself
+  double operator()(double x) const { return impl(x); }
 
-template<typename F, typename Derived>
-struct Fn {
-  Fn(F f_) : f(f_) {}
-  void operator()(const Eigen::MatrixBase<Derived>& in, Eigen::MatrixBase<Derived>& out) {
-    in.colwise();
+  // Recipe to act on containers (Just works with std::vector really)
+  template< template<class, class> typename F, typename T, typename Y >
+  auto operator()(F<Y, T>& out, const F<Y, T>& in) const {
+    return std::transform(std::begin(in), std::end(in), std::back_inserter(out),
+                          [&me=impl](const Y& y) { return me(y); });
   }
-  F f;
+
+  // template<template<class>typename EO, typename Derived1, typename Derived2 = Derived1, typename T = void>
+  // auto operator()(EO< Derived1 >& out, EO< Derived2 >& in) {
+  //     (out.colwise()).rowwise() = this->impl((in.colwise()).rowwise());
+  // }c
+
+  template<typename Derived1, typename Derived2>
+  void operator()(Eigen::DenseBase<Derived1>& out, const Eigen::DenseBase<Derived2>& in)  {
+    this->impl(out.colwise().rowwise()) = this->impl(out.colwise().rowwise());
+  }
+  
+  // auto operator()(std::vector<double>& out, const std::vector<double>& in) const {
+  //   using V = std::vector<double>;
+  //   return std::transform(std::begin(in), std::end(in), std::back_inserter(out),
+  //                         [&me=impl](const double& x){ return me(x); });
+  // }
+
+  auto operator()(std::vector<double>& out) const {
+    return [&](const std::vector<double>& in) {
+      return this->operator()(out, in);
+    }; 
+  }
+
+    FImpl impl;
+    double x_min = -10.0;
+    double x_max = 10.0;
 };
 
+auto finite_domain_lambda = []<typename F>(double xmin, double xmax, F f) {
+    return RealFunction(xmin, xmax, f);
+};
 
-template<typename Derived>
-void plot(std::ostream& out,
-          const Eigen::ArrayBase<Derived>& sample_x,
-          const Eigen::ArrayBase<Derived>& sample_y,
-          const double xmin,
-          const double xmax) {
+template <typename F>
+class DataCollector {
+public:
+    DataCollector(RealFunction<F> f) : FN{f} {}
 
-  auto x_size = sample_x.size();
-  auto x_max = xmax > 80 ? 80 : x_size;
-  auto y_max = (x_size) > 50 ? 50 : x_size;
-  auto y_min = 2;
-
-  // f -= -std::abs(f.minCoeff()) - 0.00001;
-
-  // f -= -std::abs(f.minCoeff()) - y_min - 0.001;
-
-  Eigen::ArrayXd data_y = sample_y;
-  data_y -= -std::abs(data_y.minCoeff() - 2.0001);
-
-  data_y *= 0.75 * (y_max - y_min) / (data_y.maxCoeff());
-
-  assert(y_max - data_y.maxCoeff() - 1 > 0  && "Error: found with f(x) above limit");
-  assert(data_y.minCoeff() - 1 > 0 && "Error: found f(x) <= 0");
-
-  std::vector<std::string> plot;
-  Eigen::ArrayXi heights = Eigen::ArrayXi::Constant(xmax-xmin, 0);
-
-  heights = data_y.template cast<int>();
-
-  assert(y_max - heights.maxCoeff() - 1 > 0  && "Error: found height above limit");
-  assert(heights.minCoeff() - 1 > 0 && "Error: found height <= 0");
-
-  for (Eigen::Index i = 0; i < x_size; i += x_size / x_max) {
-    std::ostringstream ss;
-    whitespace(ss, y_max - heights[i] - 1);
-    ss << 'o';
-    whitespace(ss, heights[i] - 1);
-    ss << '_';
-    whitespace(ss, y_min);
-    plot.emplace_back(ss.str());
-  }
-
-  bool all_same = std::all_of(plot.begin(), plot.end(),
-                              [n=plot.front().size()](const auto& line) { return line.size() == n; });
-  assert(all_same && "Error: Got verticals of different lengths in plot");
-
-  int nx = plot.size();
-  int ny = plot.back().size();
-
-  for (int j=0; j<ny; ++j) {
-     for (int i=0; i<nx; ++i) {
-       out << plot[plot.size() - 1 - i][j];
-     }
-     out << '\n';
-  }
-  out << std::endl;
-}
-
-
-template<typename F, typename Derived>
-void build_training(const Fn<F, Derived>& fun,
-                    const double xmin,
-                    const double xmax,
-                    typename Eigen::DenseBase<Derived>& train_x,
-                    typename Eigen::DenseBase<Derived>& train_y)
-{
-  constexpr Eigen::Index tr_size = Eigen::MatrixBase<Derived>::ColsAtCompileTime;
-
-  train_x.setLinSpaced(xmin, xmax);
-  fun(train_x, train_y);
-
-  assert(train_x.cols() == tr_size && "Failed to initialize sample_x");
-  assert(train_y.cols() == tr_size && "Failed to initialize sample_y");
-}
-
-
-template<typename Derived1, typename Derived2>
-void sample(const Eigen::ArrayBase<Derived1>& train_x,
-            const Eigen::ArrayBase<Derived1>& train_y,
-            const double epsilon,
-            const Eigen::Index minibatch_size,
-            const Eigen::ArrayBase<Derived2>& sample_x,
-            const Eigen::ArrayBase<Derived2>& sample_y)
-{
-  assert(train_x.size() > 0 && train_y.size() == train_x.size() && "Error: training dataset is not defined");
-
-  std::cout << "\nIn sample:\n"
-            << "\nTrain_x;\n" << train_x.transpose().format(Clean)
-            << "\nTrain_y:\n" << train_y.transpose().format(Clean) << std::endl;
-
-  using Scalar = typename Derived2::Scalar;
-  using RowVectorType = typename Eigen::internal::plain_row_type<Derived2>::type;
-
-  static std::vector<Eigen::Index> ndx(train_x.size(), 0);
-  static std::random_device rd;
-  static std::mt19937 eng{ rd() };
-  std::normal_distribution<> d{0, 1};
-
-
-  Eigen::ArrayXd rand = Eigen::ArrayXd::Random(train_x.size());
-
-  std::iota(ndx.begin(), ndx.end(), 0);
-  static std::vector<double> noise;
-  noise.clear();
-
-  for (int i = 0; i < minibatch_size; ++i) {
-    noise.push_back(d(eng));
-  }
-
-  std::partial_sort(ndx.begin(), ndx.begin() + minibatch_size, ndx.end(),
-                    [&rand](const auto a, const auto b) { return rand[a] < rand[b]; });
-
-  auto n = ndx.begin();
-  for (Eigen::Index i = 1; i < minibatch_size; ++i, ++n) {
-
-    const_cast<Eigen::ArrayBase<Derived2>&>(sample_x).coeffRef(i) = train_x.coeff(*n);
-    const_cast<Eigen::ArrayBase<Derived2>&>(sample_y).coeffRef(i) = train_y.coeff(*n) + epsilon * noise[i];
-  }
-}
-
-
-int main(int argc, char *argv[]) {
-
-  std::cout << "\n\nHello..." << std::endl;
-  Config config;
-  myANN NN;
-
-  config.InputSize = 1;
-  config.OutputSize = 1;
-  config.HiddenLayers  = { 10, 10 };
-  config.LearningRate = 0.1;
-
-  double lo = -2 * 3.1456;
-  double hi = 2 * 3.1456;
-  
-  constexpr Eigen::Index tr_size = 1000;
-  constexpr Eigen::Index minibatch_size = 100;
-
-  Eigen::ArrayXd train_x = Eigen::ArrayXd::LinSpaced(tr_size, lo, hi);
-  Eigen::ArrayXd train_y = Eigen::cos(train_x.array());
-
-  std::cout << "Training data constructed" << std::endl;
-
-  Eigen::Index n_epochs = 30;
-
-  for (Eigen::Index i = 0; i < n_epochs; ++i) {
-    Eigen::ArrayXd sample_x = train_x.head(minibatch_size);
-    Eigen::ArrayXd sample_y = train_y.head(minibatch_size);
-
-    sample(train_x,
-           train_y,
-           0.4,
-           minibatch_size,
-           sample_x,
-           sample_y);
-
-    std::cout << "Constructed sample_x and sample_y" << std::endl;
-
-    // plot(std::cout,
-    //    train_x,
-    //    train_y,
-    //    lo,
-    //    hi);
-
+    std::pair<double*, double*> pData_Training() {
+        return std::make_pair(buf_trainx.data(), buf_trainy.data());
     }
 
+    // TODO Check that data is still there
+    std::pair<double*, double*> pData_Testing() { return std::make_pair(buf_testx.data(), buf_testy.data()); }
 
+    std::pair<double*, double*> pData_Sample(const size_t N, const double var12) {
+        generate_sample(N, var12);
+        return std::make_pair(buf_samplex.data(), buf_sampley.data());
+    }
 
+    void InitTrainingData(const size_t n_train) {
+        this->n_train = static_cast<Eigen::Index>(n_train);
 
-  // NN.setup(config);
-  // std::cout << "======= After Setup =======" << std::endl;
-  // NN.print(std::cout);
+        fill_domain_random(buf_trainx, n_train);
+        FN(buf_trainy, buf_trainx);
+    }
 
-  // Eigen::VectorXd inputs(4);
-  // inputs << 0.20, 0.40, 0.60, 0.80;
+    void ResetTestData(const size_t n_tests) {
+        fill_domain_random(buf_testx, n_tests);
+        FN(buf_testy, buf_testx);
+    }
 
-  // NN.Forward(inputs);
-  // std::cout << "====== After forward ======" << std::endl;
-  // NN.print(std::cout);
+    [[nodiscard]] double x_min() const { return FN.xmin; }
+    [[nodiscard]] double x_max() const { return FN.xmax; }
 
-  // Eigen::VectorXd outputs(1);
-  // outputs << 1.0;
+private:
+    std::random_device rd;
+    std::mt19937 eng;
 
-  // NN.Backward(outputs);
-  // std::cout << "====== After backward ======" << std::endl;
-  // NN.print(std::cout);
+    RealFunction<F> FN;
+    Eigen::Index n_train;
+    std::vector<double> buf_trainx;
+    std::vector<double> buf_trainy;
+    std::vector<double> buf_samplex;
+    std::vector<double> buf_sampley;
+    std::vector<double> buf_testx;
+    std::vector<double> buf_testy;
+    bool initialized;
 
-  std::cout << "\n\nByebye...  " << std::endl;
+    std::vector<double>& fill_domain_random(std::vector<double>& inputs, const size_t N) {
+        inputs.clear();
 
-  return 0;
+        std::uniform_real_distribution<> dist(FN.x_min, FN.x_max);
+        std::generate_n(std::back_inserter(inputs), N, [&] { return dist(eng); });
+        return inputs;
+    }
+
+    double add_gaussian_noise(double a, double var12 = 1.0) {
+        std::normal_distribution<> dist{0, var12};
+        return a + dist(eng);
+    }
+
+    template <typename Fun>
+    auto add_gaussian_noise(Fun fun, double var12 = 1.0) {
+        std::normal_distribution<> dist{0, var12};
+        return [f = fun, n = dist(eng)](const auto& w) { return n + f(w); };
+    }
+
+    void add_gaussian_noise(std::vector<double>& inputs, const double var12) {
+        std::normal_distribution<> dist(0, var12);
+        std::transform(inputs.begin(), inputs.end(), inputs.begin(), [&](auto d) { return d + dist(eng); });
+    }
+
+    void generate_sample(const size_t N, double var12 = 1.0) {
+        buf_samplex.clear();
+        buf_sampley.clear();
+        std::uniform_int_distribution<> dist(0, buf_trainx.size() - 1);
+        std::generate_n(std::back_inserter(buf_samplex), N, [&] { return buf_trainx[dist(eng)]; });
+
+        FN(buf_sampley, buf_samplex);
+        add_gaussian_noise(buf_sampley, var12);
+    }
+};
+
+// TODO: I need to group all those resources somewhere... this function can be
+// called with different template parameters every time, so it will initialize a bunch
+// of those static vectors anyway....
+template <typename F>
+class TestModel {
+public:
+    TestModel(DataCollector<F>* DC_, myANN* NN_) : DC{DC_}, NN{NN_} {}
+
+    /**
+     * Run @n_tests predictions with the current state of @nn and
+     * return the average error.
+     *
+     * The sequence of predictions/actual is also available with a call to `results()`
+     */
+    bool run_test(const Eigen::Index n_tests) {
+        // build_trainng will clear the other two
+        // predictions_.clear();
+        m_config = NN->get_config();
+        this->n_tests = n_tests;
+
+        DC->ResetTestData(n_tests);
+        auto pdata = DC->pData_Testing();
+
+        // Store pointer to data
+        ptest_x = pdata.first;
+        ptest_y = pdata.second;
+
+        // Map the sequence of inputs/outputs as a matrix
+        // NOTE: Compare with
+        // Eigen::Map<const Eigen::MatrixXd> Y (ptest_y, OutSize, test_size);
+        // which is the compile-time-fixed version
+        Eigen::MatrixXd test_x = Eigen::Map<Eigen::MatrixXd>(ptest_x, m_config.InputSize, n_tests);
+        Eigen::MatrixXd test_y = Eigen::Map<Eigen::MatrixXd>(ptest_y, m_config.OutputSize, n_tests);
+
+        double error_sum = 0.0;
+        bool okay = NN->Predict(test_x, test_y, buf_preds.data(), error_sum);
+
+        if (not okay)
+            std::cerr << "ERROR! The Predict method returned with error (most likely failed to map the space "
+                         "of predictions)"
+                      << std::endl;
+
+        return okay;
+    }
+
+    [[nodiscard]] double average_loss() const { return error_sum / static_cast<double>(n_tests); }
+
+    /**
+     * Return the sequence of pairs prediction/actuals available after evaluating the model
+     */
+    [[nodiscard]] std::vector<std::pair<double, double>> results() const {
+        std::vector<std::pair<double, double>> result;
+        double* py = ptest_y;
+        std::transform(ptest_y, ptest_y + n_tests, buf_preds.begin(), std::back_inserter(result),
+                       [](const auto& y, const auto& p) { return std::make_pair(y, p); });
+        return result;
+    }
+
+private:
+    double* ptest_x;
+    double* ptest_y;
+    size_t n_tests;
+
+    std::vector<double> buf_preds;
+    double error_sum = 0.0;
+    Config m_config;
+    myANN* NN;
+    DataCollector<F>* DC;
+};
+
+////////////////////////////////////////////////////////////
+// MAIN
+////////////////////////////////////////////////////////////
+int main(int argc, char* argv[]) {
+    constexpr Eigen::Index tr_size = 5000;
+    constexpr Eigen::Index n_epochs = 10;
+    constexpr Eigen::Index minibatch_size = 100;
+    using TrainT = Eigen::ArrayXd;
+    using SampleT = Eigen::ArrayXd;
+    // The standard deviation of the Gaussian noise injected
+    // into the training samples by the data collector
+    double var12 = 0.15;
+
+    double xmin = -4 * 3.1456;
+    double xmax = 4 * 3.1456;
+
+    auto FDL = finite_domain_lambda(xmin, xmax, [](double x) { return std::cos(x); });
+
+    ////////////////////////////////////////////////////////////
+    // Build the training data
+    ////////////////////////////////////////////////////////////
+    // auto FN = Fn{ f };
+    auto DC = DataCollector(FDL);
+    DC.InitTrainingData(tr_size);
+
+    constexpr Eigen::Index InputSize_ = 1;
+    constexpr Eigen::Index OutputSize_ = 1;
+
+    ////////////////////////////////////////////////////////////
+    // Initialize the neural network
+    ////////////////////////////////////////////////////////////
+    Config config;
+    myANN NN;
+
+    config.InputSize = InputSize_;
+    config.OutputSize = OutputSize_;
+    config.HiddenLayers = {10, 10};
+    config.LearningRate = 0.1;
+
+    NN.setup(config);
+    std::cout << "Set up network" << std::endl;
+
+    ////////////////////////////////////////////////////////////
+    // Record the evolution of the model
+    ////////////////////////////////////////////////////////////
+    auto Evaluator = TestModel{&DC, &NN};
+
+    std::vector<std::vector<std::pair<double, double>>> results;
+    std::vector<double> average_errors;
+
+    ////////////////////////////////////////////////////////////
+    // The objects whose data will be updated with the
+    // training samples
+    ////////////////////////////////////////////////////////////
+    Eigen::MatrixXd sample_x;
+    Eigen::MatrixXd sample_y;
+
+    ////////////////////////////////////////////////////////////
+    // MAIN LOOP
+    ////////////////////////////////////////////////////////////
+    for (Eigen::Index i = 0; i < n_epochs; ++i) {
+        std::cout << "Epoch " << i << std::endl;
+
+        ////////////////////////////////////////////////////////////
+        // Collect trainng data
+        ////////////////////////////////////////////////////////////
+
+        auto [psample_x, psample_y] = DC.pData_Sample(minibatch_size, var12);
+
+        // TODO A call to dc.pData_Sample might just be enough to update the Eigen::Map
+        // view. This would only need to be created once
+        new (&sample_x) Eigen::Map<Eigen::MatrixXd>(psample_x, InputSize_, minibatch_size);
+        new (&sample_y) Eigen::Map<Eigen::MatrixXd>(psample_y, OutputSize_, minibatch_size);
+
+        std::cout << "Constructed sample_x and sample_y, starting training." << std::endl;
+        
+        ////////////////////////////////////////////////////////////
+        // Run a training step
+        ////////////////////////////////////////////////////////////
+        for (Eigen::Index i = 0; i < minibatch_size; ++i) {//minibatch_size - 1; ++i) {
+              // TODO Implement Forward and Backward compatibility
+            // with batch runs
+            NN.Forward(sample_x.col(i));
+
+            NN.Backward(sample_y.col(i));
+        }
+
+        std::cout << "\nTraining phase completed\n" << std::endl;
+        
+        /////////////////////////////////////////////////////////l///
+        // Update the weights of the model according the that
+        // last training step
+        ////////////////////////////////////////////////////////////
+
+        NN.UpdateWeights(minibatch_size);
+
+        constexpr size_t n_tests = 50;
+
+        Evaluator.run_test(n_tests);
+
+        auto& avg_error = average_errors.emplace_back(Evaluator.average_loss());
+        results.emplace_back(Evaluator.results());
+
+        // template<Eigen::Index test_size, typename F, Eigen::Index InSize, Eigen::Index OutSize>
+        // double TestModel(myANN* NN, const Fn<F>& fn, Eigen::Index size = test_size)
+
+        std::cout << "\n*********\nAfter " << i << " epochs, "
+                  << "\n  Average error is " << avg_error << std::endl;
+
+    }  // for each epoch
+
+    std::cout << "Done training\n\n***************************\n\n" << std::endl;
+
+    for (auto i = 0; i < n_epochs; ++i) {
+        std::cout << "RESULTS:\n"
+                  << "Epoch: " << i << ", Average error: " << average_errors[i] << std::endl;
+
+        std::cout << "\n\n The list of predictions made next to the expected output is:\n";
+
+        for (auto i = 0; i < n_epochs; ++i) {
+            std::cout << "\n************Epoch " << i << ":\n";
+            for (const auto& pred_expec : results[i]) {
+                std::cout << "    Expected: " << pred_expec.second << ", Predicted: " << pred_expec.first
+                          << '\n';
+            }
+            std::cout << "average Error for epoch " << i << ": " << average_errors[i] << std::endl;
+        }
+    }
+
+    std::cout << "\n\nByebye...  " << std::endl;
+
+    return 0;
 }
