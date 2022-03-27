@@ -1,8 +1,0 @@
-[requires]
-glfw/3.3.6
-glad/0.1.34
-imgui/1.87
-implot/0.13
-
-[generators]
-cmake

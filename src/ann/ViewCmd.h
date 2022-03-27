@@ -1,12 +1,12 @@
 #include <iostream>
 #include <LinearAnn.h>
-
+#include "Config.h"
 
 namespace simple {
 
 
 void config_header(Config config) {
-    if constexpr (std::is_signed_v<Config::Index>)
+    if constexpr (std::is_signed_v<Eigen::Index>)
       std::cout << "Warning! The type deduced for Config::Index is signed!" << std::endl;
 }
 

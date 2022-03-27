@@ -6,18 +6,19 @@
 #include <vector>
 
 #include "Eigen/Core"
+#include "Config.h"
 
 namespace simple {
 
 
-  struct Config { using Index = Eigen::Index;
-     Index InputSize; Index OutputSize; std::vector<Index> HiddenLayers; double LearningRate; double MomentumGain;
-  };
+  // struct Config {
+  //    Eigen::Index InputSize; Eigen::Index OutputSize; std::vector<Eigen::Index> HiddenLayers; double LearningRate; double MomentumGain;
+  // };
 
 
 class myANN {
 
-public: using Index = Config::Index; myANN() = default;
+public: myANN() = default;
 
     /**
      * Constructs the data-structure of the model before
@@ -28,26 +29,24 @@ public: using Index = Config::Index; myANN() = default;
     /**
      *
      */
+    void Train(const Eigen::Index batch_size,
+               const double* train_x, const Eigen::Index Ntrain_x,
+               const double* train_y, const Eigen::Index Ntrain_y);
+
     void Train(const Eigen::MatrixXd& train_x, const Eigen::MatrixXd& train_y);
-
-    /**
-     * Compute the errors with the current model with respect to the given test
-     * data @test_x and @test_y.
-     */
-    bool Predict(const Eigen::MatrixXd& test_x, const Eigen::MatrixXd& test_y, double* predictions, double& error_sum);
-
-    /**
-     * Remap the underying buffer for the output layer to the given pointer.
-     */
-    bool ConnectToOutput(double* data);
-
     /**
      * Runs a forward pass, where each node's
      * value is computed according to the
      * given `input` and the current `policy`
      * of the network.
      */
+    void Forward(const Eigen::MatrixXd& input, Eigen::MatrixXd& output);
+
+    void Forward(const Eigen::VectorXd& input, Eigen::VectorXd& output);
+
+    // Need to use templates here!
     void Forward(const Eigen::VectorXd& input);
+    void ForwardBatch(double* data_out, const double* data_in, const Eigen::Index NInputs);
 
     void ErrorFunction(const Eigen::VectorXd& target, const Eigen::VectorXd& pred, double& error) const;
 
@@ -55,8 +54,9 @@ public: using Index = Config::Index; myANN() = default;
      * For each layer, compute the deltas, i.e. the <partial C(a^L) / partial z^l>
      * when C is seen as having fixed weights and output, with variable input
      */
-    void BackpropagateError(const Eigen::VectorXd& target);
 
+
+    void BackpropagateError(const Eigen::VectorXd& target);
     /**
      * Runs a backpropagation pass, upgrading the weights
      * from knowledge of the last forward pass.
@@ -66,15 +66,17 @@ public: using Index = Config::Index; myANN() = default;
      * viewed as having fixed input and output, with variable weights
      */
     void Backward(const Eigen::VectorXd& target);
+    void Backward(const Eigen::VectorXd& target, Eigen::MatrixXd& errors);
 
     /**
      * For each layer, update the weights in the direction of @gradients with step size
      * given by @learning_rate.
      */
-    void UpdateWeights(Index minibatch_size = 1);
+    void UpdateWeights(Eigen::Index minibatch_size = 1);
 
     double AverageLoss(const Eigen::MatrixXd& predictions, const Eigen::MatrixXd& targets);
 
+    bool Predict(const Eigen::MatrixXd& test_x, const Eigen::MatrixXd& test_y, double* predictions, double& error_sum);
 
     [[nodiscard]] const Config& get_config() const;
     /**
@@ -89,10 +91,10 @@ public: using Index = Config::Index; myANN() = default;
 
 private:
     // Local record of the number of layers in the network
-    Index n_layers;
+    Eigen::Index n_layers;
 
     // The current shape of the state, as set by the configuration
-    std::vector<Index> layout;
+    std::vector<Eigen::Index> layout;
 
     // Controls the step size when updating the network's state.
     double learning_rate;
@@ -116,6 +118,8 @@ private:
     std::vector<Eigen::MatrixXd> gradients;
 
     Config m_config;
+
+
 
   };  // myANN
 
