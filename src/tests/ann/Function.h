@@ -30,8 +30,9 @@ struct RealFunction {
     void operator()(const Eigen::DenseBase<Derived2>& in, Eigen::DenseBase<Derived1>& out) {
         this->impl(out.colwise().rowwise()) = this->impl(out.colwise().rowwise());
     }
-    auto operator()(std::vector<double>& out) const {
-        return [&](const std::vector<double>& in) { return this->operator()(in, out); };
+    auto operator()(const std::vector<double>& in, std::vector<double>& out) const {
+        std::transform(in.begin(), in.end(), std::back_inserter(out),
+                       [&](auto x) { return impl(x); });
     }
 
     FImpl impl;

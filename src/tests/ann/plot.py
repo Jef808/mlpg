@@ -3,33 +3,42 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-import math
-
-path = Path("../../../data")
-
+from matplotlib.animation import FuncAnimation
+import sys
 
 if __name__ == '__main__':
-    x = np.arange(-2*math.pi, 2*math.pi, 0.1)
+    if (len(sys.argv) < 1):
+        print(f"USAGE: {sys.argv[0]} file.csv", file=sys.stderr)
+    path = Path(sys.argv[1])
+    with open(path, "r") as file:
+        train_x = [float(d.strip()) for d in file.readline().split(',')]
+        train_y = [float(d.strip()) for d in file.readline().split(',')]
+        predictions = []
+        prediction_in = [f.strip() for f in file.readline().split(',') if len(f) > 0]
+        while prediction_in:
+            predictions.append([float(d) for d in prediction_in])
+            prediction_in = [f.strip() for f in file.readline().split(',') if len(f) > 0]
 
-    with open(path / Path(f"training0.csv"), "r") as file:
-        train_x_in = [f.strip() for f in file.readline().split(',')]
-        train_x = [float(d) for d in train_x_in if len(d) > 0]
+    fig, ax = plt.subplots()
+    ln, = ax.plot([], [], color="red", lw=3, label='Predicted values')
+    epochs = list(range(0, len(predictions)))
 
-        train_y_in = [f.strip() for f in file.readline().split(',')]
-        train_y = [float(d) for d in train_y_in if len(d) > 0]
+    def init():
+        ax.set_xlim(train_x[0], train_x[-1])
+        ax.set_ylim(min(*predictions[0]) - 1, max(*predictions[0]) + 1)
+        return ln,
 
-        fig, (ax0, ax1) = plt.subplots(nrows=1, ncols=2, sharex=True, figsize=(12,6))
-        ax0.set_title(f"training data")
-        ax0.errorbar(train_x, train_y)
+    def update(epoch):
+        ln.set_data(train_x, predictions[epoch])
+        ln.set_label(f"Predicted values after {epoch} epochs")
+        return ln,
 
-        for i in range(30):
-            with open(path / Path(f"sample{i}.csv"), "r") as file:
-                sample_x_in = [f.strip() for f in file.readline().split(',')]
-                sample_x = [float(d) for d in train_x_in if len(d) > 0]
+    ax.set_title(f"Results")
+    ax.plot(train_x, train_y, "blue", lw=4, label='Expected values')
+    ax.legend()
 
-                sample_y_in = [f.strip() for f in file.readline().split(',')]
-                sample_y = [float(d) for d in train_y_in if len(d) > 0]
+    ani = FuncAnimation(fig, update, frames=epochs, interval=33,
+                        init_func=init, blit=True)
 
-                ax1.set_title(f"sample # {i}")
-                ax1.errorbar(sample_x, sample_y, errorevery=6)
-                plt.savefig(f"data/plot{i}.png")
+    #ani.save('predictions.mp4', fps=30, dpi=200)
+    plt.show()

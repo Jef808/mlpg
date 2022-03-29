@@ -2,7 +2,7 @@
 #define SPDLOG_ACTIVE_LEVEL DEBUG
 #endif
 
-#include "LinearAnn.h"
+#include "TemplateAnn.h"
 #include "Function.h"
 #include "FunctionExampleData.h"
 
@@ -33,7 +33,7 @@ using namespace simple;
 template <typename F>
 class Worker {
 public:
-    Worker(DataCollector<F>* DC_, myANN* NN_) : DC{DC_}, NN{NN_} {}
+    Worker(FunctionDataCollector<F>* DC_, ANN* NN_) : DC{DC_}, NN{NN_} {}
 
     /**
      * Run @n_tests predictions with the current state of @nn and
@@ -93,8 +93,8 @@ private:
     std::vector<double> buf_preds;
     double error_sum = 0.0;
     Config m_config;
-    myANN* NN;
-    DataCollector<F>* DC;
+    ANN* NN;
+    FunctionDataCollector<F>* DC;
 };
 
 ////////////////////////////////////////////////////////////
@@ -122,7 +122,7 @@ int main(int argc, char* argv[]) {
     // Configure the network
     ////////////////////////////////////////////////////////////
     Config config;
-    myANN NN;
+    ANN NN;
 
     constexpr Eigen::Index InputSize_ = 1;
     constexpr Eigen::Index OutputSize_ = 1;
@@ -226,7 +226,7 @@ int main(int argc, char* argv[]) {
         results.emplace_back(Evaluator.results());
 
         // template<Eigen::Index test_size, typename F, Eigen::Index InSize, Eigen::Index OutSize>
-        // double TestModel(myANN* NN, const Fn<F>& fn, Eigen::Index size = test_size)
+        // double TestModel(ANN* NN, const Fn<F>& fn, Eigen::Index size = test_size)
 
         std::cout << "\n*********\nAfter " << i << " epochs, "
                   << "\n  Average error is " << avg_error << std::endl;
