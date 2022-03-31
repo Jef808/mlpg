@@ -25,7 +25,7 @@ if __name__ == '__main__':
 
     def init():
         ax.set_xlim(train_x[0], train_x[-1])
-        ax.set_ylim(min(*predictions[0]) - 1, max(*predictions[0]) + 1)
+        ax.set_ylim(min(*train_y) - 2, max(*train_y) + 1)
         return ln,
 
     def update(epoch):
@@ -37,7 +37,7 @@ if __name__ == '__main__':
     ax.plot(train_x, train_y, "blue", lw=4, label='Expected values')
     ax.legend()
 
-    ani = FuncAnimation(fig, update, frames=epochs, interval=33,
+    ani = FuncAnimation(fig, update, frames=epochs, interval=20,
                         init_func=init, blit=True)
 
     #ani.save('predictions.mp4', fps=30, dpi=200)

@@ -31,3 +31,10 @@ target_link_libraries(test_ann_function PUBLIC
   function_ex
   ann2
   Eigen3::Eigen)
+
+add_executable(test_ann_mnist
+  ${CMAKE_CURRENT_SOURCE_DIR}/testMnist.cpp)
+target_link_libraries(test_ann_mnist PUBLIC
+  dataIO
+  ann2
+  Eigen3::Eigen)
