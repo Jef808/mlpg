@@ -1,30 +1,69 @@
 {
-  "version": 1,
+  "version": 3,
   "cmakeMinimumRequired": {
-    "major": 3,
-    "minor": 20,
-    "patch": 0
+    "major": 3, "minor": 22, "patch": 0
   },
   "configurePresets": [
     {
-      "name": "gcc",
-      "displayName": "GCC",
-      "description": "Default build options for GCC",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build",
+      "name": "conf-common",
+      "hidden": true,
+      "description": "General settings that apply to all configurations",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/install/${presetName}"
+    },
+    {
+      "name": "gcc-debug",
+      "displayName": "gcc Debug",
+      "description": "Configuration for the gcc compiler, debug build type",
+      "inherits": "conf-common",
       "cacheVariables": {
-        "CMAKE_CXX_FLAGS": "-Wsuggest-override"
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
-      "name": "clang",
-      "displayName": "Clang",
-      "description": "Default build options for Clang",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build",
+      "name": "gcc-release",
+      "displayName": "gcc Release",
+      "description": "Configuration for the gcc compiler, release build type",
+      "inherits": "conf-common",
       "cacheVariables": {
-        "CMAKE_CXX_FLAGS": "-Winconsistent-missing-override -Winconsistent-missing-destructor-override"
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
+    },
+    {
+      "name": "clang-debug",
+      "displayName": "Clang",
+      "description": "Configuration for the clang compiler, release build type",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "test-common",
+      "description": "Test CMake settings applying to all configurations",
+      "hidden": true,
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    },
+    {
+      "name": "test-gcc-debug",
+      "displayName": "Strict",
+      "description": "Enable output and stop on failure",
+      "inherits": "test-common",
+      "configurePreset": "gcc-debug"
     }
   ]
 }

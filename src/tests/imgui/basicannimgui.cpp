@@ -207,14 +207,6 @@ int main(int argc, char *argv[]) {
     size_loss = LossDataBuffer.Data.size();
     size_accuracy = AccuracyDataBuffer.Data.size();
 
-    // if (size_loss > b && size_loss > 100) {
-    //   for (int i = std::floor(b + 0.005f); i < size_loss; ++i) {
-    //     if (LossDataBuffer.Data[i].y > y_max_loss)
-    //       y_max_loss = LossDataBuffer.Data[i].y;
-    //   }
-    // }
-    //std::vector<double> x_ticks(n_batch_train * n_epochs);
-
     if (size_loss > 0 && size_accuracy > 0)
     {
       if (ImGui::Begin("Monitoring network", &p_open))
