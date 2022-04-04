@@ -3,18 +3,31 @@
 
 #include "Eigen/Core"
 
+#include <cstddef>
 #include <vector>
 
 
 namespace simple {
 
       struct Config {
-          Eigen::Index InputSize;
-          Eigen::Index OutputSize;
-          std::vector<Eigen::Index> HiddenLayers;
-          double LearningRate;
-        double MomentumGain;
-        Eigen::Index batch_size;
+
+        Eigen::Index InputSize;
+        Eigen::Index OutputSize;
+        std::vector<Eigen::Index> HiddenLayers { 0 };
+
+        size_t n_data;
+        double training_ratio      { 0.70 };
+        double validation_ratio    { 0.15 };
+        double testing_ratio       { 0.15 };
+
+        ptrdiff_t batch_size { 1 };
+
+        double LearningRate;
+        double MomentumGain  { 0 };
+        double L2RegCoeff    { 0 };
+
+        bool monitor_loss_per_batch_while_training { false };
+        bool monitor_accuracy_while_training { false };
   };
 
 

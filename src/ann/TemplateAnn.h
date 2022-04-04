@@ -3,12 +3,13 @@
 
 #include "Activations.h"
 #include "Config.h"
+#include "data/manip.h"
 
-#include "spdlog/spdlog.h"
-#include "spdlog/sinks/basic_file_sink.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
 #include "Eigen/Core"
 
+#include <cstddef>
+#include <iostream>
+#include <random>
 #include <vector>
 #include <type_traits>
 
@@ -19,6 +20,8 @@ class ANN {
 public:
     using Matrix = typename std::conditional< std::is_same_v<FT, float>,
                                               Eigen::MatrixXf, Eigen::MatrixXd >::type;
+    using Array = typename std::conditional< std::is_same_v<FT, float>,
+                                              Eigen::ArrayXf, Eigen::ArrayXd >::type;
 
     ANN() = default;
 
@@ -29,24 +32,39 @@ public:
     void setup(Config);
 
     /**
+     * Run a Forward and Backward pass for each batch of data. Update
+     * gradients after each batch.
      *
+     * @losses and @predictions are optional buffers to output "real-time"
+     * feedback on how the model is evolving. Barebone implementation:
+     * invoke the notify callback @CB after posting a batch. The consumer
+     * can then count the notifications and always know how much fresh data
+     * it is allowed to read. (Consumer owns the memory pool)
      */
-    void Train(const size_t NEpochs, const Eigen::Index batch_size,
-               const FT* train_x, const Eigen::Index Ntrain_x,
-               const FT* train_y, const Eigen::Index Ntrain_y);
+    template<typename DataCb = std::nullptr_t, typename OnExitCb = std::nullptr_t>
+    void Train(size_t NEpochs, FT* train_x, FT* train_y, ptrdiff_t n_training,
+               DataCb loss_out=nullptr, DataCb accuracy_out=nullptr,
+               OnExitCb exit_cb=nullptr);
 
     /**
      * Compute the errors with the current model with respect to the given test
      * data @test_x and @test_y.
      */
     template<typename Derived, typename OtherDerived>
-    void Predict(const Eigen::MatrixBase<Derived>& inputs, Eigen::MatrixBase<OtherDerived> const& outputs);
+    void Predict(const Eigen::MatrixBase<Derived>& inputs,
+                 Eigen::MatrixBase<OtherDerived> const& predictions);
+
+    template< typename Derived, typename OtherDerived >
+    void AccSuccess(const Eigen::MatrixBase<Derived>& outputs,
+                  const Eigen::MatrixBase<OtherDerived>& targets,
+                  unsigned int& success);
 
     /**
      * Feed @inputs into the network and collect the @outputs at the last layer.
      */
     template <typename Derived, typename OtherDerived>
-    void Forward(const Eigen::MatrixBase<Derived>& inputs, Eigen::MatrixBase<OtherDerived> const& outputs);
+    void Forward(const Eigen::MatrixBase<Derived>& inputs,
+                 Eigen::MatrixBase<OtherDerived> const& outputs);
 
     /**
      * Runs a backpropagation pass, upgrading the weights
@@ -66,7 +84,8 @@ public:
      * @Return The sum of the cost function for each pair of columns.
      */
     template<typename Derived, typename OtherDerived>
-    void CostSum(const Eigen::MatrixBase<Derived>& targets, const Eigen::MatrixBase<OtherDerived>& outputs,
+    void AccLoss(const Eigen::MatrixBase<Derived>& targets,
+                 const Eigen::MatrixBase<OtherDerived>& outputs,
                  double& cost);
 
     /**
@@ -109,6 +128,12 @@ public:
      */
     void print(std::ostream& /* output stream */) const;
 
+    [[nodiscard]] const std::vector<Eigen::Index>& get_layout() const;
+
+    [[nodiscard]] std::vector<FT*> get_weights();
+
+    [[nodiscard]] std::vector<FT*> get_activations();
+
 private:
     // The number of layers in the network
     Eigen::Index n_layers;
@@ -117,7 +142,7 @@ private:
     Eigen::Index n_batches;
 
     // Controls the step size when updating the network's weights
-    double learning_rate;
+    FT learning_rate;
 
     // The current shape of the network, as set by the configuration
     std::vector<Eigen::Index> layout;
@@ -129,7 +154,7 @@ private:
     std::vector<Matrix> layers;
 
     // To save the weighted inputs during a forward pass
-    std::vector<Matrix> cache;
+    //std::vector<Matrix> cache;
 
     // The current estimate for each neuron's responsibility in the error
     std::vector<Matrix> deltas;
@@ -155,10 +180,15 @@ void ANN<FT>::setup(Config config)
     // Clear the state
     layout.clear();
     layers.clear();
-    cache.clear();
+    //cache.clear();
     deltas.clear();
     weights.clear();
     gradients.clear();
+
+    std::random_device rd;
+    std::mt19937 eng{ rd() };
+    std::normal_distribution<float> dist(0, 1.0);
+    std::vector<float> rand_init;
 
     Eigen::Index BS = m_config.batch_size;
 
@@ -172,12 +202,17 @@ void ANN<FT>::setup(Config config)
     for (Eigen::Index i = 0; i < n_layers - 2; ++i) {
         auto output_size = m_config.HiddenLayers[i];
 
+        std::generate_n(std::back_inserter(rand_init), output_size * (input_size + 1),
+                        [&dist, &eng, scale=2/std::sqrt(input_size+1)](){ return dist(eng) * scale; });
+
+        Matrix rand = Eigen::Map<Matrix>(rand_init.data(), output_size, input_size + 1);
+
         layers.emplace_back(output_size + 1, BS) <<
             Matrix::Zero(output_size, BS), Matrix::Constant(1, BS, 1.0);
-        cache.emplace_back(output_size, BS) << Matrix::Zero(output_size, BS);
+        //cache.emplace_back(output_size, BS) << Matrix::Zero(output_size, BS);
         deltas.emplace_back(output_size, BS) << Matrix::Zero(output_size, BS);
-        weights.emplace_back(output_size, input_size + 1)
-            << Matrix::Random(output_size, input_size + 1) * 2 / std::sqrt(input_size+1+output_size);  // Xavier initialization for sigmoid
+        weights.emplace_back(output_size, input_size + 1) << rand;
+            //<< Matrix::Random(output_size, input_size + 1) * (2 / std::sqrt(input_size));  // Xavier initialization for sigmoid
         gradients.emplace_back(output_size, input_size + 1)
             << Matrix::Zero(output_size, input_size + 1);
         input_size = layout.emplace_back(output_size);
@@ -185,40 +220,54 @@ void ANN<FT>::setup(Config config)
 
     input_size = m_config.HiddenLayers[n_layers - 3];
     auto output_size = m_config.OutputSize;
+
+    std::generate_n(std::back_inserter(rand_init), output_size * (input_size + 1),
+                        [&dist, &eng, scale=2/std::sqrt(input_size+1)](){ return dist(eng) * scale; });
+
+    Matrix rand = Eigen::Map<Matrix>(rand_init.data(), output_size, input_size + 1);
+
     layers.emplace_back(output_size, BS) << Matrix::Zero(output_size, BS);
     deltas.emplace_back(output_size, BS) << Matrix::Zero(output_size, BS);
-    cache.emplace_back(output_size, BS) << Matrix::Zero(output_size, BS);
-    weights.emplace_back(output_size, input_size + 1) << Matrix::Random(output_size, input_size + 1) * 2 / std::sqrt(input_size+1+output_size);
+    //cache.emplace_back(output_size, BS) << Matrix::Zero(output_size, BS);
+    weights.emplace_back(output_size, input_size + 1) << rand;//Matrix::Random(output_size, input_size + 1) * (2 / std::sqrt(input_size));
     gradients.emplace_back(output_size, input_size + 1) << Matrix::Zero(output_size, input_size + 1);
 }
 
 template<typename FT>
 template <typename Derived, typename OtherDerived>
 void ANN<FT>::Forward(const Eigen::MatrixBase<Derived>& inputs,
-                  Eigen::MatrixBase<OtherDerived> const& outputs_)
+                      Eigen::MatrixBase<OtherDerived> const& outputs_)
 {
     // assign inputs to the first layer
     layers[0].topRows(inputs.rows()) = inputs;
+    // the 0-based index of the last layer
     const Eigen::Index L = n_layers - 1;
 
-    for (Eigen::Index i = 0; i < n_layers - 1; ++i) {
-        // Cache the weighted input values
-        cache[i] = weights[i] * layers[i];
+    // Apply activation in the hidden layers
+    for (Eigen::Index i = 0; i < L - 1; ++i) {
+
+        activation::Sigmoid(weights[i] * layers[i], layers[i+1].topRows(layout[i+1]));
         // Compute the activated neuron values
-        if (i < n_layers - 2)
-            activation::Sigmoid(cache[i], layers[i + 1].topRows(cache[i].rows()));
-        else
-            layers[i+1].topRows(cache[i].rows()) = cache[i];
     }
-    // Copy the outputs in the provided matrix
-    const_cast<Eigen::MatrixBase<OtherDerived>&> (outputs_) = layers[L];
+    // Linear output layer
+    //const_cast< Eigen::MatrixBase<OtherDerived>& >(outputs_) = weights[L-1] * layers[L-1];
+
+    // activation::Sigmoid(
+    //     weights[L-1] * layers[L-1],
+    //     const_cast< Eigen::MatrixBase<OtherDerived>& >(outputs_));
+    // layers[L]
+
+    // Softmax output layer
+    activation::SoftMax(
+        weights[L-1] * layers[L-1],
+        const_cast< Eigen::MatrixBase<OtherDerived>& >(outputs_));
 }
 
 template<typename FT>
 template<typename Derived, typename OtherDerived>
 void ANN<FT>::Error(const Eigen::MatrixBase<Derived>& targets,
-                const Eigen::MatrixBase<OtherDerived>& predictions,
-                Eigen::MatrixBase<OtherDerived> const& errors_)
+                    const Eigen::MatrixBase<OtherDerived>& predictions,
+                    Eigen::MatrixBase<OtherDerived> const& errors_)
 {
     const_cast<Eigen::MatrixBase<OtherDerived>&> (errors_) = predictions - targets;
 }
@@ -230,32 +279,138 @@ void ANN<FT>::BackpropagateError(const Eigen::MatrixBase<Derived>& errors)
     deltas.back() = errors;
 
     for (Eigen::Index i = n_layers - 2; i > 0; --i) {
-        activation::DerSigmoid(cache[i-1], cache[i-1]);
-        deltas[i-1] = (weights[i].transpose() * deltas[i]).topRows(deltas[i-1].rows()).cwiseProduct(cache[i-1]);
+        activation::TimesDerSigmoid(layers[i].topRows(layout[i]),
+                                    (weights[i].transpose() * deltas[i]).topRows(layout[i]),
+                                    deltas[i-1]);
     }
 }
 
 template<typename FT>
 void ANN<FT>::CalculateGradients()
 {
-    for (Eigen::Index i = 0; i < n_layers - 1; ++i)
-        gradients[i] = (deltas[i] * layers[i].transpose()) / static_cast<FT>(m_config.batch_size);
+    for (Eigen::Index i = n_layers - 2; i >= 0; --i)
+        gradients[i] = (deltas[i] * layers[i].transpose());
 }
 
 template<typename FT>
 void ANN<FT>::UpdateWeights()
 {
     for (Eigen::Index i = n_layers - 2; i >= 0; --i) {
-        weights[i] -= (learning_rate * gradients[i]);
+        // The regularization contribution
+        weights[i].leftCols(layout[i]) *= (1.0 - (learning_rate * m_config.L2RegCoeff / std::ceil(m_config.n_data * m_config.training_ratio)));
+
+        // Gradient contribution
+        weights[i] -= (learning_rate * gradients[i]) / static_cast<FT>(m_config.batch_size);
+    }
+}
+
+template<typename FT>
+template< typename DataCb, typename OnExitCb >
+void ANN<FT>::Train(const size_t NEpochs, FT* train_x, FT* train_y, ptrdiff_t n_batch,
+                    DataCb avg_loss_out, DataCb avg_accuracy_out,
+                    OnExitCb exit_cb)
+{
+    Data::Shuffler DS;
+
+    const auto batch_size = m_config.batch_size;
+    const auto data_size = n_batch * batch_size;
+
+    Matrix outputs(m_config.OutputSize,
+                   batch_size);
+    Matrix errors(m_config.OutputSize,
+                  batch_size);
+
+    for (ptrdiff_t epoch = 0; epoch < NEpochs; ++epoch)
+    {
+        double loss = 0.0;
+        unsigned int n_success = 0;
+
+        DS.shuffle(train_x,
+                   train_y,
+                   train_x + data_size * m_config.InputSize,
+                   train_y + data_size * m_config.OutputSize,
+                   data_size);
+
+        for (ptrdiff_t i = 0; i < n_batch; ++i)
+        {
+            Eigen::Map<Matrix> batch_x(train_x + i * batch_size * m_config.InputSize,
+                                       m_config.InputSize,
+                                       batch_size);
+            Eigen::Map<Matrix> batch_y(train_y + i * batch_size * m_config.OutputSize,
+                                       m_config.OutputSize,
+                                       batch_size);
+
+            Forward(batch_x, outputs);
+
+            double batch_loss = 0.0;
+            unsigned int batch_n_success = 0;
+            AccLoss(outputs, batch_y, batch_loss);
+            AccSuccess(outputs, batch_y, batch_n_success);
+
+            loss += batch_loss;
+            n_success += batch_n_success;
+
+            if constexpr(not std::is_same_v<DataCb, std::nullptr_t>)
+            {
+                avg_loss_out(batch_loss / batch_size);
+                avg_accuracy_out(static_cast<float>(batch_n_success) / batch_size);
+            }
+
+            Error(batch_y, outputs, errors);
+
+            BackpropagateError(errors);
+
+            CalculateGradients();
+
+            UpdateWeights();
+        }
+
+        std::cout << "Epoch "<< epoch
+                  << "... Average loss: "
+                  << loss / (n_batch * batch_size) << std::endl;;
+    }
+
+    if constexpr (not std::is_same_v< OnExitCb, std::nullptr_t >) {
+        exit_cb.notify();
     }
 }
 
 template<typename FT>
 template<typename Derived, typename OtherDerived>
-void ANN<FT>::CostSum(const Eigen::MatrixBase<Derived>& targets, const Eigen::MatrixBase<OtherDerived>& outputs,
-                  double& cost)
+void ANN<FT>::AccLoss(const Eigen::MatrixBase<Derived>& targets, const Eigen::MatrixBase<OtherDerived>& outputs,
+                      double& loss)
 {
-    cost += ((targets - outputs).colwise().squaredNorm()).rowwise().sum().value();
+    // Mean Squared Differences
+    //loss += ((targets - outputs).colwise().squaredNorm()).array().sum();
+
+    // Log-Likelihood
+    loss -= Eigen::log((targets.array() * outputs.array()).colwise().maxCoeff()).sum();
+
+    // Cross Entropy
+    //loss -= (targets.array() * outputs.array().log() + (1.0 - targets.array()) * (1.0 - outputs.array()).log()).colwise().sum().sum();
+}
+
+template<typename FT>
+template<typename Derived, typename OtherDerived>
+void ANN<FT>::AccSuccess(const Eigen::MatrixBase<Derived>& outputs,
+                         const Eigen::MatrixBase<OtherDerived>& targets,
+                         unsigned int& n_successful)
+{
+    assert(outputs.rows() == targets.rows()
+           && outputs.rows() == targets.rows()
+           && "Size mismatch between outputs and predictions");
+
+    for (Eigen::Index x = 0; x < outputs.cols(); ++x) {
+        // Store get the index of the maximum coefficient of each column outputs
+        int y = -1;
+        outputs.col(x).maxCoeff( &y );
+
+        assert(y >= 0 && "Failed to record index of choice");
+        assert(y < targets.cols() && "index of choice is bigger than number of classes");
+
+        if (targets(y, x) > 0.8f)
+            ++n_successful;
+    }
 }
 
 template<typename FT>
@@ -275,6 +430,33 @@ void ANN<FT>::print(std::ostream& out) const
     }
 }
 
+
+template<typename FT>
+const std::vector<Eigen::Index>& ANN<FT>::get_layout() const
+{
+    return layout;
+}
+
+template<typename FT>
+std::vector<FT*> ANN<FT>::get_weights()
+{
+    std::vector<FT*> ret;
+    for (auto& weight : weights) {
+        ret.push_back(weight.data());
+    }
+    return ret;
+}
+
+
+template<typename FT>
+std::vector<FT*> ANN<FT>::get_activations()
+{
+    std::vector<FT*> ret;
+    for (auto& layer : layers) {
+        ret.push_back(layer.data());
+    }
+    return ret;
+}
 
 }  // namespace simple
 

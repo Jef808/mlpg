@@ -4,15 +4,20 @@ project(mcts-simple VERSION 1.0)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED)
+# Defines variables for logging with colors from cmake
+add_subdirectory(scripts)
 
-list(PREPEND CMAKE_MODULE_PATH
+list(PREPEND 
+  CMAKE_MODULE_PATH
+  ${CMAKE_SOURCE_DIR}/cmake/
   /usr/local/share/eigen3/cmake/
   /home/jfa/.local/lib/cmake/spdlog/
-  ${CMAKE_SOURCE_DIR}/cmake/
+  ${CMAKE_SOURCE_DIR}/3rdparty/sanitizers-cmake/cmake/
   )
 
+set(BUILD_SHARED_LIBS OFF)
+
+include(imgui-glfw-glad-glm)
 
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
@@ -24,11 +29,10 @@ include_directories(${CMAKE_SOURCE_DIR}/lib/include)
 find_package(spdlog REQUIRED)
 
 
-
 set(BUILD_VIEWER ON)
 
-if (BUILD_VIEWER)
-  include(imgui-glfw-glad-glm)
+if (${BUILD_VIEWER})
+
 endif()
 
 
