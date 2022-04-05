@@ -14,8 +14,8 @@
     },
     {
       "name": "gcc-debug",
-      "displayName": "gcc Debug",
-      "description": "Configuration for the gcc compiler, debug build type",
+      "displayName": "GCC",
+      "description": "Configuration for the gcc compiler",
       "inherits": "conf-common",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "gcc",
@@ -25,13 +25,13 @@
     },
     {
       "name": "gcc-release",
-      "displayName": "gcc Release",
-      "description": "Configuration for the gcc compiler, release build type",
+      "displayName": "GCC",
+      "description": "Configuration for the gcc compiler",
       "inherits": "conf-common",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "gcc",
         "CMAKE_CXX_COMPILER": "g++",
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -41,7 +41,7 @@
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     }
   ],
@@ -59,7 +59,7 @@
       }
     },
     {
-      "name": "test-gcc-debug",
+      "name": "test-gcc",
       "displayName": "Strict",
       "description": "Enable output and stop on failure",
       "inherits": "test-common",

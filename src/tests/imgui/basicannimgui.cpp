@@ -1,5 +1,7 @@
 #define GLFW_INCLUDE_NONE
 
+#include "implot.h"
+#include "implot_internal.h"
 #include <GLFW/glfw3.h>
 #include <chrono>
 #include <glad/gl.h>
@@ -7,14 +9,12 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
-#include "implot.h"
-#include "implot_internal.h"
 
 #include <iostream>
 #include <numeric>
 #include <thread>
 
-#include <Eigen/Core>
+//#include <Eigen/Core>
 
 #include "ann/Config.h"
 #include "ann/TemplateAnn.h"
@@ -24,61 +24,64 @@
 
 
 using FT = float;
-using Index = Eigen::Index;
-using Matrix = Eigen::MatrixXf;
+// using Index = Eigen::Index;
+// using Matrix = Eigen::MatrixXf;
 
 using namespace simple;
 
 // utility structure for plotting
-struct PlotBuffer {
+struct PlotBuffer
+{
   int MaxSize;
   int Offset;
   ImVector<ImVec2> Data;
-  PlotBuffer(int max_size)
-    : MaxSize { max_size }, Offset{ 0 }
+  PlotBuffer(int max_size) : MaxSize{ max_size }, Offset{ 0 } { Data.reserve(MaxSize); }
+  void AddPoint(float x, float y)
   {
-        Data.reserve(MaxSize);
-  }
-  void AddPoint(float x, float y) {
     if (Data.size() < MaxSize)
-      Data.push_back(ImVec2(x,y));
+      Data.push_back(ImVec2(x, y));
     else {
-      Data[Offset] = ImVec2(x,y);
-      Offset =  (Offset + 1) % MaxSize;
+      Data[Offset] = ImVec2(x, y);
+      Offset = (Offset + 1) % MaxSize;
     }
   }
-  void Erase() {
+  void Erase()
+  {
     if (Data.size() > 0) {
       Data.shrink(0);
-      Offset  = 0;
+      Offset = 0;
     }
   }
 };
 
 
-class PushDataCb {
-  public:
-    explicit PushDataCb(PlotBuffer& ref) : buffer{ ref } {}
-    template<typename T>
-    void operator()(T d) { buffer.AddPoint(counter++, static_cast<float>(d)); }
-  private:
-    float counter = 0;
-    PlotBuffer& buffer;
+class PushDataCb
+{
+public:
+  explicit PushDataCb(PlotBuffer &ref) : buffer{ ref } {}
+  template<typename T> void operator()(T d) { buffer.AddPoint(counter++, static_cast<float>(d)); }
+
+private:
+  float counter = 0;
+  PlotBuffer &buffer;
 };
 
-class OnExitCb {
-  public:
-    explicit OnExitCb(bool& ref) : flag{ ref } {}
-    void notify() { flag = !flag; }
-  private:
-    bool& flag;
+class OnExitCb
+{
+public:
+  explicit OnExitCb(bool &ref) : flag{ ref } {}
+  void notify() { flag = !flag; }
+
+private:
+  bool &flag;
 };
 
 
 static bool p_open = true;
 
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -109,7 +112,7 @@ int main(int argc, char *argv[]) {
   // Set up network's configuration
   size_t n_epochs = 35;
 
-  Config config {
+  Config config{
     .InputSize = 784,
     .OutputSize = 10,
     .HiddenLayers = { 32 },
@@ -126,17 +129,14 @@ int main(int argc, char *argv[]) {
   std::vector<FT> data_y;
   data_x.reserve(config.n_data * config.InputSize);
   data_y.reserve(config.n_data * config.OutputSize);
-  auto err = Data::load_csv(train_fp, data_x, data_y,
-                            config.OutputSize, config.n_data);
+  auto err = Data::load_csv(train_fp, data_x, data_y, config.OutputSize, config.n_data);
   if (err) {
     std::cerr << "Failed to load csv files: " << err->what() << std::endl;
     return EXIT_FAILURE;
   }
-  if ((data_x.size() != config.n_data * config.InputSize)
-      || (data_y.size() != config.n_data * config.OutputSize)) {
+  if ((data_x.size() != config.n_data * config.InputSize) || (data_y.size() != config.n_data * config.OutputSize)) {
     std::cerr << "Incorrect size of data collected: "
-              << " data_x.size() = " << data_x.size()
-              << " and data_y.size() = " << data_y.size() << std::endl;
+              << " data_x.size() = " << data_x.size() << " and data_y.size() = " << data_y.size() << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -155,17 +155,20 @@ int main(int argc, char *argv[]) {
   // Callbacks we pass to the network's Train method
   bool training_done = false;
   int n_batch_processed = 0;
-  PlotBuffer LossDataBuffer { static_cast<int>(n_batch_train * n_epochs) };
-  PlotBuffer AccuracyDataBuffer { static_cast<int>(n_batch_train * n_epochs) };
+  PlotBuffer LossDataBuffer{ static_cast<int>(n_batch_train * n_epochs) };
+  PlotBuffer AccuracyDataBuffer{ static_cast<int>(n_batch_train * n_epochs) };
 
   // Start training in new thread
-  std::thread in_training([&]{
+  std::thread in_training([&] {
     ANN<float> NN;
-    NN.setup( config );
+    NN.setup(config);
     NN.Train(n_epochs,
-             data_x.data(), data_y.data(), n_batch_train,
-             PushDataCb{ LossDataBuffer }, PushDataCb{ AccuracyDataBuffer },
-             OnExitCb{ training_done });
+      data_x.data(),
+      data_y.data(),
+      n_batch_train,
+      PushDataCb{ LossDataBuffer },
+      PushDataCb{ AccuracyDataBuffer },
+      OnExitCb{ training_done });
   });
   in_training.detach();
 
@@ -207,33 +210,38 @@ int main(int argc, char *argv[]) {
     size_loss = LossDataBuffer.Data.size();
     size_accuracy = AccuracyDataBuffer.Data.size();
 
-    if (size_loss > 0 && size_accuracy > 0)
-    {
-      if (ImGui::Begin("Monitoring network", &p_open))
-      {
+    if (size_loss > 0 && size_accuracy > 0) {
+      if (ImGui::Begin("Monitoring network", &p_open)) {
         if (not training_done) {
           ImGui::Text("Training in progress");
         } else {
           ImGui::Text("Training Completed");
         }
-        if (ImPlot::BeginSubplots("##Training Data", 2, 1, ImVec2(800, 800), ImPlotSubplotFlags_LinkAllX))
-        {
-          if (ImPlot::BeginPlot("Losses"))
-          {
+        if (ImPlot::BeginSubplots("##Training Data", 2, 1, ImVec2(800, 800), ImPlotSubplotFlags_LinkAllX)) {
+          if (ImPlot::BeginPlot("Losses")) {
             ImPlot::SetupAxis(ImAxis_X1, "Batches trained");
             ImPlot::SetupAxis(ImAxis_Y1, "Loss function values");
-            //ImPlot::SetupAxes("Batches trained", "Loss function values", x_flags, y_flags_loss);
+            // ImPlot::SetupAxes("Batches trained", "Loss function values", x_flags, y_flags_loss);
             ImPlot::SetupAxisLimits(ImAxis_X1, 0, n_batch_train * n_epochs);
             ImPlot::SetupAxisLimits(ImAxis_Y1, y_min_loss, y_max_loss);//, ImPlotCond_Always);
-            ImPlot::PlotLine("Average cost per batch processed", &LossDataBuffer.Data[0].x, &LossDataBuffer.Data[0].y, size_loss, LossDataBuffer.Offset, 2 * sizeof(float));
+            ImPlot::PlotLine("Average cost per batch processed",
+              &LossDataBuffer.Data[0].x,
+              &LossDataBuffer.Data[0].y,
+              size_loss,
+              LossDataBuffer.Offset,
+              2 * sizeof(float));
             ImPlot::EndPlot();
           }
 
-          if (ImPlot::BeginPlot("Accuracy"))
-          {
+          if (ImPlot::BeginPlot("Accuracy")) {
             ImPlot::SetupAxis(ImAxis_Y1, "Predictions accuracy");
             ImPlot::SetupAxisLimits(ImAxis_Y1, y_min_accuracy, y_max_accuracy);
-            ImPlot::PlotLine("Average accuracy per batch processed", &AccuracyDataBuffer.Data[0].x, &AccuracyDataBuffer.Data[0].y, size_accuracy, AccuracyDataBuffer.Offset, 2 * sizeof(float));
+            ImPlot::PlotLine("Average accuracy per batch processed",
+              &AccuracyDataBuffer.Data[0].x,
+              &AccuracyDataBuffer.Data[0].y,
+              size_accuracy,
+              AccuracyDataBuffer.Offset,
+              2 * sizeof(float));
             ImPlot::EndPlot();
           }
 
