@@ -6,8 +6,9 @@ FetchContent_Declare(
   GIT_TAG v1.10.0
   GIT_PROCESS TRUE
   )
-Fetch_Content_GetProperties(spdlog)
-if (NOT spdlog_POPULATED)
-  FetchContent_Populate(spdlog)
-  add_subdirectory(${spdlog_SOURCE_DIR} ${spdlog_BINARY_DIR})
-endif()
+FetchContent_MakeAvailable(spdlog)
+#Fetch_Content_GetProperties(spdlog)
+#if (NOT spdlog_POPULATED)
+#  FetchContent_Populate(spdlog)
+#  add_subdirectory(${spdlog_SOURCE_DIR} ${spdlog_BINARY_DIR})
+#endif()
