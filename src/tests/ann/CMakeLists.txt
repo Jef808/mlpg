@@ -1,59 +1,25 @@
-project(mcts-simple VERSION 1.0)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests/${CMAKE_PROJECT_NAME}_tests)
 
-# add_executable(test_ann
-#   ${CMAKE_CURRENT_SOURCE_DIR}/testLinearAnn.cpp)
-# target_link_libraries(test_ann PUBLIC
-#   ann
-#   Eigen3::Eigen
-#   )
-# target_include_directories(test_ann PUBLIC
-#   ${CMAKE_SOURCE_DIR}/src/ann
-#   )
+set(mlpg_Ann_tests_dependencies
+  mlpg::Ann
+  mlpg::Data
+  Eigen3::Eigen
+  spdlog::spdlog
+  Catch2::Catch2WithMain
+)
+
+# include(Catch2)
+# list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCES_DIR}/extras)
+# include(CTest)
+# include(Catch)
+
+add_executable(test_serialize test_serialize.cpp)
+target_link_libraries(test_serialize PRIVATE ${mlpg_Ann_tests_dependencies})
+catch_discover_tests(test_serialize)
 
 
-#add_library(function_ex INTERFACE
-#  ${CMAKE_CURRENT_SOURCE_DIR}/Function.h
-#  ${CMAKE_CURRENT_SOURCE_DIR}/FunctionExampleData.h)
-#target_link_libraries(function_ex INTERFACE
-#  Eigen3::Eigen)
-#target_include_directories(function_ex INTERFACE
-#  ${CMAKE_CURRENT_SOURCE_DIR})
-#
-#
-#add_executable(test_function_data
-#  ${CMAKE_CURRENT_SOURCE_DIR}/testDataGen.cpp)
-#target_link_libraries(test_function_data PUBLIC
-#  function_ex)
-#
-#add_executable(test_ann_function
-#  ${CMAKE_CURRENT_SOURCE_DIR}/testAnnFunction.cpp)
-#target_link_libraries(test_ann_function PUBLIC
-#  function_ex
-#  ann
-#  Eigen3::Eigen)
-#target_compile_options(test_ann_function PRIVATE "-ffast-math" "-march=native" "-DNDEBUG")
+add_executable(test_function_data testDataGen.cpp)
+target_link_libraries(test_function_data PRIVATE ${mlpg_Ann_tests_dependencies})
 
-#add_executable(test_ann_mnist
-#  ${CMAKE_CURRENT_SOURCE_DIR}/testClassification.cpp)
-#target_link_libraries(test_ann_mnist PUBLIC
-#  dataIO
-#  ann
-#  viewer
-#  Eigen3::Eigen)
-#target_compile_options(test_ann_mnist PRIVATE "-ffast-math" "-march=native")# "-DNDEBUG")
-
-#list(APPEND CXX_FLAGS "-fno-threadsafe-statics")
-
-#find_package(Threads REQUIRED)
-
-#find_package(OpenGL REQUIRED)
-
-#add_executable(withImgui withImgui.cpp)
-#target_link_libraries(withImgui PUBLIC
-#  #viewer
-#  imgui
-#  glm
-#  ann
-#  dataIO
-#  Eigen3::Eigen
-#  Threads::Threads)
+add_executable(test_ann_function testAnnFunction.cpp)
+target_link_libraries(test_ann_function PRIVATE ${mlpg_Ann_tests_dependencies})

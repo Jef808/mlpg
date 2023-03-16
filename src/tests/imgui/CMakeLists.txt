@@ -1,21 +1,23 @@
-project(mcts-simple VERSION 1.0)
-
-# add_executable(testimgui testimgui.cpp)
-# target_link_libraries(
-#   testimgui
-#   imgui
-#   glm
-# )
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests/${CMAKE_PROJECT_NAME}_tests)
 
 set( IMPLOT_SOURCES
-  ${CMAKE_SOURCE_DIR}/external/implot/implot.cpp
-  ${CMAKE_SOURCE_DIR}/external/implot/implot_items.cpp
+  ${implot_SOURCE_DIR}/implot.cpp
+  ${implot_SOURCE_DIR}/implot_items.cpp
   )
 set( IMPLOT_HEADERS
-  ${EXTERNAL_DIR}/implot/implot.h
-  ${EXTERNAL_DIR}/implot/implot_internal.h
+  ${implot_SOURCE_DIR}/implot.h
+  ${implot_SOURCE_DIR}/implot_internal.h
   )
-set( IMPLOT_INCLUDE_DIRS ${EXTERNAL_DIR}/implot )
+# set( IMPLOT_SOURCES
+#   ${CMAKE_SOURCE_DIR}/external/implot/implot.cpp
+#   ${CMAKE_SOURCE_DIR}/external/implot/implot_items.cpp
+#   )
+# set( IMPLOT_HEADERS
+#   ${EXTERNAL_DIR}/implot/implot.h
+#   ${EXTERNAL_DIR}/implot/implot_internal.h
+#   )
+
+set( IMPLOT_INCLUDE_DIRS ${implot_SOURCE_DIR} )
 set( IMPLOT_DEPENDENCIES imgui glm )
 
 
@@ -28,31 +30,22 @@ target_include_directories( implot PUBLIC
 
 
 find_package(Threads REQUIRED)
-#find_package(Eigen3 REQUIRED)
 
 add_executable(
   basicannimgui
   basicannimgui.cpp
-  # ${CMAKE_SOURCE_DIR}/external/implot/implot.cpp
-  # ${CMAKE_SOURCE_DIR}/external/implot/implot_items.cpp
 )
 
 # link project_options/warnings
-target_link_libraries(basicannimgui PRIVATE project_options project_warnings)
-# Set sources
-target_link_system_libraries(
+target_link_libraries(
   basicannimgui
-  # PUBLIC
-  # ${LOCAL_SOURCES_CONFIGURED}
   PRIVATE
+  project_options project_warnings
+  mlpg::Ann
+  mlpg::Data
   implot
   Threads::Threads
 )
-
-target_link_libraries(basicannimgui
-  PRIVATE
-  ann)
-
 
 # Add logs
 include(CMakePrintHelpers)

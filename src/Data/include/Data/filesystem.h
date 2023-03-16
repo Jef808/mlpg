@@ -15,14 +15,14 @@ namespace simple::Data {
  * and one test.csv file.
  */
 std::pair< std::string, std::string >
-get_train_test_fp(std::string_view data_dir, std::error_code& ec) noexcept {
+rel_home_directory(std::string_view data_dir, std::error_code& erc) noexcept {
     namespace fs = std::filesystem;
 
     fs::path data_dir_{ data_dir };
-    data_dir_ = fs::is_symlink(data_dir_, ec)
-        ? fs::read_symlink(data_dir_, ec)
+    data_dir_ = fs::is_symlink(data_dir_, erc)
+        ? fs::read_symlink(data_dir_, erc)
         : data_dir_;
-    if (ec)
+    if (erc)
         return {};
 
     const char* home = getenv("HOME");

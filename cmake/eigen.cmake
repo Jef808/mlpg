@@ -9,4 +9,6 @@ FetchContent_Declare(
 set(EIGEN_BUILD_DOC OFF)
 set(BUILD_TESTING OFF)
 set(EIGEN_BUILD_PKGCONFIG OFF)
+set( OFF)
+
 FetchContent_MakeAvailable(Eigen)
