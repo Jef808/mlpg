@@ -1,7 +1,7 @@
 
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
 
-#include "TemplateAnn.h"
+#include "ann/TemplateAnn.h"
 #include "FunctionExampleData.h"
 #include "Function.h"
 
@@ -115,7 +115,7 @@ int main() {
                                        OutputSize,
                                        batch_size);
             NN.Forward(test_x, outputs);
-            NN.CostSum(test_y, outputs, cost);
+            NN.AccLoss(test_y, outputs, cost);
         }
 
         time += duration_cast<milliseconds>(timer.elapsed());

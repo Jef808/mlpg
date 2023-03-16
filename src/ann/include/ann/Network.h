@@ -4,6 +4,7 @@
 #include "Activations.h"
 #include "Config.h"
 #include "Shuffle_data.h"
+#include "utilities.h"
 
 #include "Eigen/Core"
 
@@ -35,16 +36,24 @@ public:
      * Run a Forward and Backward pass for each batch of data. Update
      * gradients after each batch.
      *
-     * @losses and @predictions are optional buffers to output "real-time"
-     * feedback on how the model is evolving. Barebone implementation:
-     * invoke the notify callback @CB after posting a batch. The consumer
+     * Barebone implementation:
+     * invoke the notify callback \p exit_cb after posting a batch. The consumer
      * can then count the notifications and always know how much fresh data
-     * it is allowed to read. (Consumer owns the memory pool)
+     * it is allowed to read.
+     *
+     * \param loss_out optional buffer to output \e real-time feedback on the evolution
+     *        of the model.
+     * \param accuracy_out Similar to \p loss_out but to output accuracy of predictions.
+     * \param exit_cb Callback called at the end of each batch processed.
      */
-    template<typename DataCb = std::nullptr_t, typename OnExitCb = std::nullptr_t>
-    void Train(size_t NEpochs, FT* train_x, FT* train_y, ptrdiff_t n_training,
-               DataCb loss_out=nullptr, DataCb accuracy_out=nullptr,
-               OnExitCb exit_cb=nullptr);
+    template<typename DataCb = NullFunctor, typename OnExitCb = NullFunctor>// std::nullptr_t>
+    void Train(size_t NEpochs,
+               FT* train_x,
+               FT* train_y,
+               ptrdiff_t n_batch,
+               DataCb avg_loss_out=DataCb{},
+               DataCb avg_accuracy_out=DataCb{},
+               OnExitCb exit_cb=OnExitCb{});
 
     /**
      * Compute the errors with the current model with respect to the given test
@@ -52,15 +61,18 @@ public:
      */
     template<typename Derived, typename OtherDerived>
     void Predict(const Eigen::MatrixBase<Derived>& inputs,
-                 Eigen::MatrixBase<OtherDerived> const& predictions);
+                 Eigen::MatrixBase<OtherDerived> const& outputs);
 
     template< typename Derived, typename OtherDerived >
     void AccSuccess(const Eigen::MatrixBase<Derived>& outputs,
                   const Eigen::MatrixBase<OtherDerived>& targets,
-                  unsigned int& success);
+                  int& success);
 
     /**
-     * Feed @inputs into the network and collect the @outputs at the last layer.
+     * Feed \p inputs into the network and collect the \p outputs at the last layer.
+     *
+     * \param inputs The initial inputs fed to the network.
+     * \param outputs The <em>return value</em> of the network.
      */
     template <typename Derived, typename OtherDerived>
     void Forward(const Eigen::MatrixBase<Derived>& inputs,
@@ -70,43 +82,46 @@ public:
      * Runs a backpropagation pass, upgrading the weights
      * from knowledge of the last forward pass.
      *
-     * @target is the expected output coming from the data,
-     * @gradients output the gradient nabla_W C of the cost function
+     * \target is the expected output coming from the data,
+     * \gradients output the gradient \f$nabla_W C\f$ of the cost function
      * viewed as having fixed input and output, with variable weights
      */
     void Backward();
 
     /**
-     * Get the sum of the cost function for a set of targets/outputs.
+     * Given the training targets, get the sum of the loss function
+     * for a given batch of outputs.
      *
-     * @targets The target values from the dataset, one per column.
-     * @outputs The outputs predicted by the model, one per column.
-     * @Return The sum of the cost function for each pair of columns.
+     * \param targets The target values from the dataset, batched one per column.
+     * \param outputs The outputs predicted by the current model, batched one per column.
+     * \param double The sum of the cost function for each pair of columns.
      */
     template<typename Derived, typename OtherDerived>
     void AccLoss(const Eigen::MatrixBase<Derived>& targets,
                  const Eigen::MatrixBase<OtherDerived>& outputs,
-                 double& cost);
+                 double& loss);
 
     /**
-     * Calculates the Output layer's deltas in terms of Expected/Obtained outputs
+     * Calculate the Output layer's deltas in terms of Expected/Obtained outputs
      *
-     * @targets The true outputs coming from the dataset
-     * @predictions The predictions our current model gives
-     * @errors The value of the loss function in terms of the above
+     * \param targets The target values from training dataset, batched one per column.
+     * \param outputs The outputs predicted by the current model, batched one per column.
+     * \param errors  Output matrix where we store the resulting errors.
      */
     template<typename Derived, typename OtherDerived>
-    void Error(const Eigen::MatrixBase<Derived>& targets, const Eigen::MatrixBase<OtherDerived>& predictions,
+    void Error(const Eigen::MatrixBase<Derived>& targets,
+               const Eigen::MatrixBase<OtherDerived>& outputs,
                Eigen::MatrixBase<OtherDerived> const& errors);
 
     /**
      * Propagate the error backwards and compute the gradients of the cost function.
      *
-     * @errors The errors computed from observation at the output layer
-     * @gradients The gradients of the Cost function with respect to the current weights
+     * For each layer, compute the deltas, i.e. the \f$\partial (a^L) / \partial z^l\f$,
+     * when \f$C\f$ is seen as having fixed weights and output, with variable input
      *
-     * @Note For each layer, compute the deltas, i.e. the <partial C(a^L) / partial z^l>
-     * when C is seen as having fixed weights and output, with variable input
+     * \param errors The errors computed from observation at the output layer
+     * \param gradients The gradients of the Cost function with respect to the current weights
+     *
      */
     template<typename Derived>
     void BackpropagateError(const Eigen::MatrixBase<Derived>& errors);
@@ -118,8 +133,8 @@ public:
     void CalculateGradients();
 
     /**
-     * For each layer, update the weights in the direction of @gradients with step size
-     * given by @learning_rate.
+     * For each layer, update the weights in the direction of gradients with step size
+     * given by ANN#learning_rate.
      */
     void UpdateWeights();
 
@@ -306,8 +321,12 @@ void ANN<FT>::UpdateWeights()
 
 template<typename FT>
 template< typename DataCb, typename OnExitCb >
-void ANN<FT>::Train(const size_t NEpochs, FT* train_x, FT* train_y, ptrdiff_t n_batch,
-                    DataCb avg_loss_out, DataCb avg_accuracy_out,
+void ANN<FT>::Train(const size_t NEpochs,
+                    FT* train_x,
+                    FT* train_y,
+                    ptrdiff_t n_batch,
+                    DataCb avg_loss_out,
+                    DataCb avg_accuracy_out,
                     OnExitCb exit_cb)
 {
     Data::Shuffler DS;
@@ -394,30 +413,31 @@ template<typename FT>
 template<typename Derived, typename OtherDerived>
 void ANN<FT>::AccSuccess(const Eigen::MatrixBase<Derived>& outputs,
                          const Eigen::MatrixBase<OtherDerived>& targets,
-                         unsigned int& n_successful)
+                         int& n_success)
 {
     assert(outputs.rows() == targets.rows()
            && outputs.rows() == targets.rows()
            && "Size mismatch between outputs and predictions");
 
-    for (Eigen::Index x = 0; x < outputs.cols(); ++x) {
+    for (Eigen::Index col = 0; col < outputs.cols(); ++col) {
         // Store get the index of the maximum coefficient of each column outputs
         int y = -1;
-        outputs.col(x).maxCoeff( &y );
+        outputs.col(col).maxCoeff( &y );
 
         assert(y >= 0 && "Failed to record index of choice");
         assert(y < targets.cols() && "index of choice is bigger than number of classes");
 
-        if (targets(y, x) > 0.8f)
-            ++n_successful;
+        if (targets(y, col) > 0.8f)
+            ++n_success;
     }
 }
 
 template<typename FT>
 template<typename Derived, typename OtherDerived>
-void ANN<FT>::Predict(const Eigen::MatrixBase<Derived>& inputs, Eigen::MatrixBase<OtherDerived> const& outputs_)
+void ANN<FT>::Predict(const Eigen::MatrixBase<Derived>& inputs,
+                      Eigen::MatrixBase<OtherDerived> const& outputs)
 {
-    Forward(inputs, outputs_);
+    Forward(inputs, outputs);
 }
 
 template<typename FT>

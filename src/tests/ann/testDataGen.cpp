@@ -7,8 +7,8 @@ using namespace simple;
 
 
 int main(int argc, char *argv[]) {
-    auto Fn = finite_domain_lambda(-6, 6, [](auto x) { return std::cos(x); });
-    FunctionDataCollector DC{ Fn };
+    auto function = RealFunction{-6.0, 6.0, [](auto x) { return std::cos(x); }};
+    FunctionDataCollector DC{ function };
 
     std::vector<double> train_x;
     std::vector<double> train_y;

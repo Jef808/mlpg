@@ -1,16 +1,17 @@
 #define GLFW_INCLUDE_NONE
 
+#include <GLFW/glfw3.h>
+#include "glad/gl.h"
+// #include "glm/glm.hpp"
+
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
 #include "implot.h"
 #include "implot_internal.h"
-#include <GLFW/glfw3.h>
-#include <chrono>
-#include <glad/gl.h>
-#include <glm/glm.hpp>
-#include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
 
 #include <iostream>
+#include <chrono>
 #include <numeric>
 #include <thread>
 
@@ -18,9 +19,10 @@
 
 #include "ann/Config.h"
 #include "ann/TemplateAnn.h"
-#include "data/filesystem.h"
-#include "data/load_csv.h"
-#include "data/manip.h"
+// #include "ann/Shuffle_data.h"
+#include "Data/filesystem.h"
+#include "Data/load_csv.h"
+// #include "Data/manip.h"
 
 
 using FT = float;
@@ -33,13 +35,14 @@ using namespace simple;
 struct PlotBuffer
 {
   int MaxSize;
-  int Offset;
+  int Offset{ 0 };
   ImVector<ImVec2> Data;
-  PlotBuffer(int max_size) : MaxSize{ max_size }, Offset{ 0 } { Data.reserve(MaxSize); }
+  explicit PlotBuffer(int max_size) : MaxSize{ max_size } { Data.reserve(MaxSize); }
   void AddPoint(float x, float y)
   {
-    if (Data.size() < MaxSize)
+    if (Data.size() < MaxSize) {
       Data.push_back(ImVec2(x, y));
+    }
     else {
       Data[Offset] = ImVec2(x, y);
       Offset = (Offset + 1) % MaxSize;
@@ -47,7 +50,7 @@ struct PlotBuffer
   }
   void Erase()
   {
-    if (Data.size() > 0) {
+    if (!Data.empty()) {
       Data.shrink(0);
       Offset = 0;
     }
@@ -59,7 +62,7 @@ class PushDataCb
 {
 public:
   explicit PushDataCb(PlotBuffer &ref) : buffer{ ref } {}
-  template<typename T> void operator()(T d) { buffer.AddPoint(counter++, static_cast<float>(d)); }
+  template<typename T> void operator()(T val) { buffer.AddPoint(counter++, static_cast<float>(val)); }
 
 private:
   float counter = 0;
@@ -77,16 +80,14 @@ private:
 };
 
 
-static bool p_open = true;
-
-
 int main(int argc, char *argv[])
 {
+  bool p_open = true;
 
   glfwInit();
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  // glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+  // glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
+  // glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
   auto window = glfwCreateWindow(1200, 900, "Example", nullptr, nullptr);
   if (!window) {
@@ -103,9 +104,12 @@ int main(int argc, char *argv[])
 
   // Resolve symlinks and get actual path to the data
   std::error_code ec;
-  auto [train_fp, test_fp] = Data::get_train_test_fp("data/mnist", ec);
+  const auto* mnist_data_dir = MLPG_DATA_DIR "/mnist/";
+  auto [train_fp, test_fp] = simple::Data::rel_home_directory("Data/mnist", ec);
   if (ec) {
-    std::cerr << "Failed to resolve the path to the data directory: " << ec.message() << std::endl;
+    std::cerr << "Failed to resolve the path to the data directory "
+              << ""
+              << ec.message() << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -127,14 +131,15 @@ int main(int argc, char *argv[])
   // Load data with checks
   std::vector<FT> data_x;
   std::vector<FT> data_y;
-  data_x.reserve(config.n_data * config.InputSize);
-  data_y.reserve(config.n_data * config.OutputSize);
-  auto err = Data::load_csv(train_fp, data_x, data_y, config.OutputSize, config.n_data);
-  if (err) {
-    std::cerr << "Failed to load csv files: " << err->what() << std::endl;
+  data_x.reserve(config.n_data * static_cast<size_t>(config.InputSize));
+  data_y.reserve(config.n_data * static_cast<size_t>(config.OutputSize));
+
+  auto opt_err = simple::Data::load_csv(train_fp, data_x, data_y, static_cast<size_t>(config.OutputSize), config.n_data);
+  if (opt_err) {
+    std::cerr << "Failed to load csv files: " << opt_err->what() << std::endl;
     return EXIT_FAILURE;
   }
-  if ((data_x.size() != config.n_data * config.InputSize) || (data_y.size() != config.n_data * config.OutputSize)) {
+  if ((data_x.size() != config.n_data * static_cast<size_t>(config.InputSize)) || (data_y.size() != config.n_data * static_cast<size_t>(config.OutputSize))) {
     std::cerr << "Incorrect size of data collected: "
               << " data_x.size() = " << data_x.size() << " and data_y.size() = " << data_y.size() << std::endl;
     return EXIT_FAILURE;
@@ -146,10 +151,10 @@ int main(int argc, char *argv[])
   // Helpful quantities we will to use (Make n_data a multiple of batch_size)
   // Data is divided as training ratio * n_batch batches for training,
   // then what's left is split equally into validation and testing data.
-  size_t batch_size = config.batch_size;
-  ptrdiff_t n_batch = std::floor(config.n_data / batch_size);
-  ptrdiff_t n_batch_train = std::ceil(static_cast<double>(n_batch) * config.training_ratio);
-  ptrdiff_t n_batch_validation = std::ceil(static_cast<double>(n_batch - n_batch_train) / 2);
+  auto batch_size = static_cast<size_t>(config.batch_size);
+  auto n_batch = static_cast<ptrdiff_t>(std::floor(config.n_data / batch_size));
+  auto n_batch_train = static_cast<ptrdiff_t>(std::ceil(static_cast<double>(n_batch) * config.training_ratio));
+  auto n_batch_validation = static_cast<ptrdiff_t>(std::ceil(static_cast<double>(n_batch - n_batch_train) / 2));
   ptrdiff_t n_batch_test = n_batch - n_batch_train - n_batch_validation;
 
   // Callbacks we pass to the network's Train method
@@ -181,7 +186,7 @@ int main(int argc, char *argv[])
   ImGui::StyleColorsClassic();
 
   // Flag controlling visibility of the plot frames
-  bool p_open = n_batch_processed > 0;
+  p_open = n_batch_processed > 0;
 
   double x_min = 0.0;
   double x_max = n_batch_processed;
@@ -196,10 +201,11 @@ int main(int argc, char *argv[])
   float history = 100;
 
   ImPlotAxisFlags x_flags = ImPlotAxisFlags_None;
-  ImPlotAxisFlags y_flags_loss = ImPlotAxisFlags_LogScale;
+  ImPlotScale y_scale = ImPlotScale_Log10;
+  // ImPlotAxisFlags y_flags_loss = ImPlotAxisFlags_LogScale;
 
   // Main display loop
-  while (!glfwWindowShouldClose(window)) {
+  while (glfwWindowShouldClose(window) == 0) {
     glfwPollEvents();
 
     ImGui_ImplOpenGL3_NewFrame();
@@ -222,7 +228,7 @@ int main(int argc, char *argv[])
             ImPlot::SetupAxis(ImAxis_X1, "Batches trained");
             ImPlot::SetupAxis(ImAxis_Y1, "Loss function values");
             // ImPlot::SetupAxes("Batches trained", "Loss function values", x_flags, y_flags_loss);
-            ImPlot::SetupAxisLimits(ImAxis_X1, 0, n_batch_train * n_epochs);
+            ImPlot::SetupAxisLimits(ImAxis_X1, 0, static_cast<double>(static_cast<size_t>(n_batch_train) * n_epochs));
             ImPlot::SetupAxisLimits(ImAxis_Y1, y_min_loss, y_max_loss);//, ImPlotCond_Always);
             ImPlot::PlotLine("Average cost per batch processed",
               &LossDataBuffer.Data[0].x,
