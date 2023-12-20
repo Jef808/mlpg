@@ -10,8 +10,10 @@
 #include "implot.h"
 #include "implot_internal.h"
 
+#include <cassert>
 #include <iostream>
 #include <chrono>
+#include <filesystem>
 #include <numeric>
 #include <thread>
 
@@ -20,8 +22,8 @@
 #include "ann/Config.h"
 #include "ann/TemplateAnn.h"
 // #include "ann/Shuffle_data.h"
-#include "Data/filesystem.h"
-#include "Data/load_csv.h"
+// #include "Data/filesystem.h"
+#include "Data/load_data.h"
 // #include "Data/manip.h"
 
 
@@ -89,64 +91,82 @@ int main(int argc, char *argv[])
   // glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
   // glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-  auto window = glfwCreateWindow(1200, 900, "Example", nullptr, nullptr);
-  if (!window) {
+  auto* window = glfwCreateWindow(1200, 900, "Example", nullptr, nullptr);
+  if (window == nullptr) {
     std::cerr << "Error creating glfw window" << std::endl;
     return EXIT_FAILURE;
   }
 
   glfwMakeContextCurrent(window);
   glfwSwapInterval(1);
-  if (!gladLoaderLoadGL()) {
+  if (gladLoaderLoadGL() == 0) {
     std::cerr << "Error initializing glad";
     return EXIT_FAILURE;
   }
 
   // Resolve symlinks and get actual path to the data
   std::error_code ec;
-  const auto* mnist_data_dir = MLPG_DATA_DIR "/mnist/";
-  auto [train_fp, test_fp] = simple::Data::rel_home_directory("Data/mnist", ec);
-  if (ec) {
-    std::cerr << "Failed to resolve the path to the data directory "
-              << ""
-              << ec.message() << std::endl;
+  const std::filesystem::path mnist_data_dir = MLPG_DATA_DIR "mnist/";
+
+  const auto train_fp = mnist_data_dir / "train.csv";
+  const auto test_fp = mnist_data_dir / "test.csv";
+
+  if (!std::filesystem::exists(train_fp) || !std::filesystem::exists(test_fp)) {
+    std::cerr << "Failed to resolve the path to the data directory:"
+              << mnist_data_dir
+              << R"( does not contain "train.csv" and "test.csv" files.)"
+              << std::endl;
     return EXIT_FAILURE;
   }
 
   // Set up network's configuration
   size_t n_epochs = 35;
 
+  // Load training data as strings
+  const auto raw_training_data = simple::Data::read_csv(train_fp.c_str());
+
+  std::cerr << "Sucessfully read the training csv file" << std::endl;
+
   Config config{
     .InputSize = 784,
     .OutputSize = 10,
     .HiddenLayers = { 32 },
 
-    .n_data = 18000,
+    .n_data = raw_training_data.size() - 1,
     .batch_size = 32,
 
     .LearningRate = 0.1,
     .L2RegCoeff = 2.0,
   };
 
-  // Load data with checks
+  // Extract labels and decode everything into floats
   std::vector<FT> data_x;
   std::vector<FT> data_y;
   data_x.reserve(config.n_data * static_cast<size_t>(config.InputSize));
   data_y.reserve(config.n_data * static_cast<size_t>(config.OutputSize));
 
-  auto opt_err = simple::Data::load_csv(train_fp, data_x, data_y, static_cast<size_t>(config.OutputSize), config.n_data);
-  if (opt_err) {
-    std::cerr << "Failed to load csv files: " << opt_err->what() << std::endl;
-    return EXIT_FAILURE;
-  }
-  if ((data_x.size() != config.n_data * static_cast<size_t>(config.InputSize)) || (data_y.size() != config.n_data * static_cast<size_t>(config.OutputSize))) {
-    std::cerr << "Incorrect size of data collected: "
-              << " data_x.size() = " << data_x.size() << " and data_y.size() = " << data_y.size() << std::endl;
-    return EXIT_FAILURE;
-  }
+  for (auto row = raw_training_data.begin() + 1; row != raw_training_data.end(); ++row) {
+    // Make sure our data is consistent
+    assert(row->size() == 1 + config.InputSize && "Row has too little fields: " + row);
 
-  // Normalize the data
-  std::transform(data_x.begin(), data_x.end(), data_x.begin(), [](auto x) { return x / 255.0f; });
+    int label = std::stoi(row->front());
+    assert(0 <= label && label < 10 && "Invalid label");
+
+    // One shot encoding of the labels
+    for (auto i = 0; i < label; ++i) {
+      data_y.push_back(0.);
+    }
+    data_y.push_back(1.);
+    for (auto i = label+1; i < 10; ++i) {
+      data_y.push_back(0.);
+    }
+
+    // Insert the rest of the row in the input vector
+    // (with normalization so that entries are between 0. and 1.)
+    std::transform(row->begin() + 1, row->end(), std::back_inserter(data_x), [](const auto& entry) {
+      return std::stoi(entry) / 255.;
+    });
+  }
 
   // Helpful quantities we will to use (Make n_data a multiple of batch_size)
   // Data is divided as training ratio * n_batch batches for training,

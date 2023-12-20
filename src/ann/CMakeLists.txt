@@ -42,7 +42,7 @@ target_include_directories(mlpg_Ann
 
 target_compile_definitions(mlpg_Ann
   INTERFACE
-  "-DMLPG_DATA_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\""
+  "-DMLPG_DATA_DIR=\"${mlpg_DATA_DIR}\""
 )
 
 add_library(mlpg::Ann ALIAS mlpg_Ann)

@@ -224,10 +224,10 @@ std::optional<load_csv_exception> load_csv_nolabels(const std::filesystem::path&
 /**
  * Convenience function for calling load_csv_labels
  */
-template<typename FT, typename LabelT = unsigned int>
+template<typename FT = std::string, typename LabelT = unsigned int>
 std::optional<load_csv_exception> load_csv(std::string_view fpath,
   std::vector<FT> &inputs,
-  std::vector<FT> &labels,
+  std::vector<LabelT> &labels,
   size_t n_labels,
   size_t n_data = std::numeric_limits<size_t>::max(),
   bool labels_in_front = true,
@@ -236,7 +236,7 @@ std::optional<load_csv_exception> load_csv(std::string_view fpath,
   assert(n_labels > 0 && "Error: Number of labels not provided");
 
   return header
-           ? labels_in_front
+f           ? labels_in_front
                ? load_csv_labels<true, true, LabelT>(std::filesystem::path{ fpath }, inputs, n_labels, labels, n_data)
                : load_csv_labels<true, false, LabelT>(std::filesystem::path{ fpath }, inputs, n_labels, labels, n_data)
          : labels_in_front
@@ -254,6 +254,8 @@ std::optional<load_csv_exception> load_csv(std::string_view fpath, std::vector<F
                 : load_csv_nolabels<false>(std::filesystem::path{ fpath }, inputs);
 }
 
+template<typename FT>
+std::optional<load_csv_exception> load_csv()
 
 }// namespace simple::Data
 

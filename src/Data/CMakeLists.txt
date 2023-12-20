@@ -17,10 +17,11 @@ target_include_directories(mlpg_DATA
   INTERFACE
   ${CMAKE_CURRENT_SOURCE_DIR}/include/)
 
+message( INFO "When defining mlpg::Data interface lib, mlpg_DATA_DIR = ${mlpg_DATA_DIR}" )
+
 target_compile_definitions(mlpg_DATA
   INTERFACE
-  "-DMLPG_DATA_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\""
+  "-DMLPG_DATA_DIR=\"${mlpg_DATA_DIR}\""
 )
-
 
 add_library(mlpg::Data ALIAS mlpg_DATA)

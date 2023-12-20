@@ -21,13 +21,13 @@ include(${_project_options_SOURCE_DIR}/Index.cmake)
 # This overwrites `project_options` and sets `project_warnings`
 # uncomment to enable the options. Some of them accept one or more inputs:
 project_options(
-      ENABLE_CACHE
+      # ENABLE_CACHE
       ENABLE_CPPCHECK
       # ENABLE_CLANG_TIDY
       # ENABLE_CONAN
       # ENABLE_INTERPROCEDURAL_OPTIMIZATION
       # ENABLE_NATIVE_OPTIMIZATION
-      ENABLE_DOXYGEN
+      # ENABLE_DOXYGEN
       # ENABLE_COVERAGE
       ENABLE_SANITIZER_ADDRESS
       ENABLE_SANITIZER_LEAK
@@ -61,5 +61,7 @@ enable_testing()
 
 # set(spdlog_DIR ${EXTERNAL_DIR}/spdlog)
 # find_package(spdlog REQUIRED)
+
+set(mlpg_DATA_DIR ${CMAKE_SOURCE_DIR}/src/Data/include/Data/)
 
 add_subdirectory(src)
