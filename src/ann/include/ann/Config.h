@@ -1,19 +1,20 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include "Eigen/Core"
-
 #include <cstddef>
 #include <vector>
 
+#include "Eigen/Dense"
 
 namespace simple {
+
+  class TemplateAnn;
 
       struct Config {
 
         Eigen::Index InputSize;
         Eigen::Index OutputSize;
-        std::vector<Eigen::Index> HiddenLayers { 0 };
+        std::vector<Eigen::Index> HiddenLayers {};
 
         size_t n_data;
         double training_ratio      { 0.70 };

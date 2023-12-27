@@ -7,7 +7,7 @@
 
 #include "ann/utilities.h"
 
-#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include <cstddef>
 #include <iostream>
@@ -20,6 +20,7 @@ namespace simple {
 template<typename FT> class ANN
 {
 public:
+  using Index = Eigen::Index;
   using Matrix = typename std::conditional<std::is_same_v<FT, float>, Eigen::MatrixXf, Eigen::MatrixXd>::type;
   using Array = typename std::conditional<std::is_same_v<FT, float>, Eigen::ArrayXf, Eigen::ArrayXd>::type;
 
@@ -143,6 +144,12 @@ public:
 
   [[nodiscard]] std::vector<const FT *> get_activations() const;
 
+  /**
+   * Set the weights manually or from a serialized model.
+   */
+  template <typename InputWeightsIterator, typename InputBiasIterator>
+  void load_weights(InputWeightsIterator weights_begin, InputWeightsIterator weights_end, InputBiasIterator bias_begin, InputBiasIterator bias_end);
+
 private:
   // The number of layers in the network
   Eigen::Index n_layers{ 0 };
@@ -209,6 +216,8 @@ template<typename FT> void ANN<FT>::setup(Config config)
   for (Eigen::Index i = 0; i < n_layers - 2; ++i) {
     auto output_size = m_config.HiddenLayers[i];
 
+    rand_init.clear();
+
     std::generate_n(std::back_inserter(rand_init),
       output_size * (input_size + 1),
       [&dist, &eng, scale = 2 / std::sqrt(input_size + 1)]() { return dist(eng) * scale; });
@@ -225,9 +234,9 @@ template<typename FT> void ANN<FT>::setup(Config config)
     input_size = layout.emplace_back(output_size);
   }
 
-  input_size = m_config.HiddenLayers[n_layers - 3];
   auto output_size = layout.emplace_back(m_config.OutputSize);
 
+  rand_init.clear();
   std::generate_n(std::back_inserter(rand_init),
     output_size * (input_size + 1),
     [&dist, &eng, scale = 2 / std::sqrt(input_size + 1)]() { return dist(eng) * scale; });
@@ -237,8 +246,8 @@ template<typename FT> void ANN<FT>::setup(Config config)
   layers.emplace_back(output_size, bsize) << Matrix::Zero(output_size, bsize);
   deltas.emplace_back(output_size, bsize) << Matrix::Zero(output_size, bsize);
   // cache.emplace_back(output_size, BS) << Matrix::Zero(output_size, bsize);
-  weights.emplace_back(output_size, input_size + 1)
-    << rand;// Matrix::Random(output_size, input_size + 1) * (2 / std::sqrt(input_size));
+  weights.emplace_back(output_size, input_size + 1) << rand;
+  // Matrix::Random(output_size, input_size + 1) * (2 / std::sqrt(input_size));
   gradients.emplace_back(output_size, input_size + 1) << Matrix::Zero(output_size, input_size + 1);
 }
 
@@ -253,9 +262,7 @@ void ANN<FT>::Forward(const Eigen::MatrixBase<Derived> &inputs, Eigen::MatrixBas
 
   // Apply activation in the hidden layers
   for (Eigen::Index i = 0; i < layers_end - 1; ++i) {
-
-    activation::Sigmoid(weights[i] * layers[i], layers[i + 1].topRows(layout[i + 1]));
-    // Compute the activated neuron values
+    layers[i + 1].topRows(layout[i + 1]) = weights[i] * layers[i];
   }
   // Linear output layer
   // const_cast< Eigen::MatrixBase<OtherDerived>& >(outputs_) = weights[L-1] * layers[L-1];
@@ -266,8 +273,7 @@ void ANN<FT>::Forward(const Eigen::MatrixBase<Derived> &inputs, Eigen::MatrixBas
   // layers[L]
 
   // Softmax output layer
-  activation::SoftMax(
-    weights[layers_end - 1] * layers[layers_end - 1], const_cast<Eigen::MatrixBase<OtherDerived> &>(outputs));
+  const_cast<Eigen::MatrixBase<OtherDerived> &>(outputs) = weights[layers_end - 1] * layers[layers_end - 1];
 }
 
 template<typename FT>
@@ -380,10 +386,10 @@ void ANN<FT>::AccLoss(const Eigen::MatrixBase<Derived> &targets,
   double &loss)
 {
   // Mean Squared Differences
-  // loss += ((targets - outputs).colwise().squaredNorm()).array().sum();
+  loss += ((targets - outputs).colwise().squaredNorm()).array().sum();
 
   // Log-Likelihood
-  loss -= Eigen::log((targets.array() * targets.array()).colwise().maxCoeff()).sum();
+  //loss -= (targets.array() * targets.array()).colwise().maxCoeff().log().sum();
 
   // Cross Entropy
   // loss -= (targets.array() * outputs.array().log() + (1.0 - targets.array()) * (1.0 -
@@ -444,6 +450,30 @@ template<typename FT> std::vector<const FT *> ANN<FT>::get_activations() const
   std::vector<const FT *> ret;
   std::transform(layers.begin(), layers.end(), std::back_inserter(ret), [](const auto &layer) { return layer.data(); });
   return ret;
+}
+
+template <typename FT>
+template <typename InputWeightsIterator, typename InputBiasIterator>
+void ANN<FT>::load_weights(InputWeightsIterator weights_begin,
+                           InputWeightsIterator weights_end,
+                           InputBiasIterator bias_begin,
+                           InputBiasIterator bias_end) {
+    const auto n_weights = std::distance(weights_begin, weights_end);
+    const auto n_bias = std::distance(bias_begin, bias_end);
+    assert(n_weights == n_layers - 1 && "Load weights: Invalid number of weights matrices");
+    assert(n_bias == n_layers - 1 && "Load weights: Invalid number of bias vectors");
+
+    for (auto i = 0; i < n_layers-1; ++i) {
+      const auto input_size = layout[i];
+      const auto output_size = layout[i+1];
+
+      // Eigen::Matrix has column major storage ordering by default.
+      Matrix weights_transposed = Eigen::Map<Matrix>((weights_begin + i)->data(), input_size, output_size);
+      weights[i].leftCols(input_size) = weights_transposed.transpose();
+
+      Matrix _bias = Eigen::Map<Matrix>((bias_begin + i)->data(), output_size, 1);
+      weights[i].rightCols(1) = _bias;
+    }
 }
 
 }// namespace simple

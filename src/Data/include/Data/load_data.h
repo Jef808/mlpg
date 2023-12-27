@@ -30,24 +30,36 @@ read_csv(std::string_view fpath,
 
   std::string buffer;
 
-  try {
   while (output.size() < n_rows && std::getline(ifs, buffer)) {
-    std::string_view row_view{buffer};
     auto& row_out = output.emplace_back();
 
-    int cell_count = 0;
-    while (not row_view.empty()) {
+    std::string_view row_view{buffer};
+
+    bool is_row_consumed = row_view.length() > 0;
+
+    while (not is_row_consumed) {
+
+      // Commas indicate ends of words
+      auto end_of_word = row_view.find(',');
+
+      // Indicate time to go to next row when that was last word
+      if (end_of_word == row_view.npos) {
+        is_row_consumed = true;
+
+        // Prevent out of bounds access and/or undefined behavior
+        end_of_word = row_view.size();
+      }
+
       try {
-        auto idx = row_view.find(',');
-        row_out.emplace_back(row_view.substr(idx));
-        row_view.remove_prefix(std::min(idx + 1, row_view.size()));
+
+        // Store that word, iterate!
+        row_out.emplace_back(row_view.substr(0, end_of_word));
+        row_view.remove_prefix(end_of_word);
+
       } catch (const std::exception& e) {
-        std::cerr << "Failed reading csv file at/after cell number " << output.back().size() << std::endl;
+        std::cerr << "Error at word " << row_out.size() << ": " << e.what() << std::endl;
       }
     }
-  }
-  } catch (const std::exception& e) {
-    std::cerr << "Failed reading csv file at/after row number " << output.size() << std::endl;
   }
 
   return output;

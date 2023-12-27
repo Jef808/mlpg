@@ -64,4 +64,12 @@ enable_testing()
 
 set(mlpg_DATA_DIR ${CMAKE_SOURCE_DIR}/src/Data/include/Data/)
 
+add_library(mlpg_pch INTERFACE)
+target_include_directories(mlpg_pch INTERFACE ${CMAKE_SOURCE_DIR}/src/ann/include)
+target_link_libraries(mlpg_pch INTERFACE project_options project_warnings Eigen3::Eigen)
+target_precompile_headers(mlpg_pch INTERFACE src/ann/include/ann/TemplateAnn.h)
+target_compile_definitions(mlpg_pch INTERFACE "-Dfopenmp")
+
+add_library(mlpg::PCH ALIAS mlpg_pch)
+
 add_subdirectory(src)

@@ -1,7 +1,7 @@
 #ifndef FUNCTION_H
 #define FUNCTION_H
 
-#include "Eigen/Core"
+#include "Eigen/Dense"
 
 #include <algorithm>
 

@@ -5,7 +5,7 @@
 #include "FunctionExampleData.h"
 #include "Function.h"
 
-#include "Eigen/Core"
+#include "Eigen/Dense"
 #include "spdlog/spdlog.h"
 #include "spdlog/stopwatch.h"
 
@@ -20,8 +20,8 @@ using FT = float;
 using Matrix = std::conditional<std::is_same_v<FT, float>, Eigen::MatrixXf, Eigen::MatrixXd>::type;
 
 constexpr auto n_train = 2048;
-const auto FN = finite_domain_lambda<FT>(-6, 6, [](auto x) { return std::cos(x) + std::pow(std::cos(x), 2) - std::pow(std::sin(x), 2); });
-//const auto FN = finite_domain_lambda(-6, 6, [](auto x) { return std::cos(x*7) + std::cos(x*11); });// + std::cos(x*5 + 0.5) + 0.3;  } );
+// const auto FN = finite_domain_lambda<FT>(-6, 6, [](auto x) { return std::cos(x) + std::pow(std::cos(x), 2) - std::pow(std::sin(x), 2); });
+const auto FN = finite_domain_lambda<FT>(-6, 6, [](auto x) { return 7*x*x + 8 * x - 10; });
 constexpr auto batch_size = 32;
 constexpr size_t n_batch = n_train / batch_size;
 constexpr auto n_validation = 256;
